@@ -1,0 +1,48 @@
+{
+  "name": "arkvoid",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port=3000 --host=0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"index.html\"",
+    "check:collision": "tsx scripts/checkCollision.ts",
+    "test": "tsx --test src/engine/world/__tests__/*.ts src/engine/world/step7.test.ts src/engine/world/step8.test.ts src/engine/world/step8b.test.ts src/engine/world/step9.test.ts"
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@fontsource/instrument-serif": "^5.3.0",
+    "@supabase/supabase-js": "^2.118.0",
+    "detect-gpu": "^5.0.70",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "three": "0.186.1",
+    "zustand": "^5.0.16"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.14.0",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.25.0",
+    "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "postcss": "^8.5.31",
+    "prettier": "^3.9.10",
+    "tailwindcss": "3.4.17",
+    "tsx": "^4.21.0",
+    "typescript": "5.8.3",
+    "typescript-eslint": "^8.72.0",
+    "vite": "^8.3.0"
+  }
+}

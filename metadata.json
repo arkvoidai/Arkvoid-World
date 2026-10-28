@@ -1,0 +1,6 @@
+{
+  "name": "Arkvoid",
+  "description": "Celestial Frontier — a persistent, living world in a browser.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

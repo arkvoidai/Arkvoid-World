@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="theme-color" content="#FBFAF7" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="robots" content="noindex" />
+    <title>Arkvoid</title>
+    <meta
+      name="description"
+      content="Celestial Frontier — a persistent, living world in a browser."
+    />
+    <meta property="og:title" content="Arkvoid" />
+    <meta
+      property="og:description"
+      content="Celestial Frontier — a persistent, living world in a browser."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background-color: #fbfaf7;
+        color: #17141f;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      #root {
+        width: 100%;
+        height: 100%;
+      }
+      .arkvoid-boot {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #fbfaf7;
+        background-image:
+          radial-gradient(
+            circle at 46% 48%,
+            rgba(255, 178, 122, 0.22) 0%,
+            rgba(185, 166, 255, 0.18) 38%,
+            rgba(251, 250, 247, 0) 72%
+          );
+      }
+      .arkvoid-boot-wordmark {
+        font-family:
+          'Instrument Serif',
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          serif;
+        font-weight: 300;
+        font-size: 1.5rem;
+        letter-spacing: 0.22em;
+        color: #17141f;
+        opacity: 0.72;
+        user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="arkvoid-boot" aria-hidden="true">
+        <span class="arkvoid-boot-wordmark">Arkvoid</span>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
