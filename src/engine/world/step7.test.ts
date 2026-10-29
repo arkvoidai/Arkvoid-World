@@ -96,8 +96,8 @@ test('Step 7 Assets: manifest defines 9 required PBR slots with UV scales and ro
   }
 });
 
-test('Step 7 Spires: DistantSpires generates 7 floating aerial spires with foliage and waterfalls', () => {
+test('Step 7 Spires: DistantSpires generates 7 floating aerial spires with rock and foliage', () => {
   const spires = new DistantSpires(false);
-  assert.equal(spires.children.length, 3); // rock, foliage, waterfalls
+  assert.equal(spires.children.length, 2); // rock, foliage
   spires.dispose();
 });

@@ -9,36 +9,97 @@ interface SpireDef {
   z: number;
   height: number;
   radius: number;
-  hasWaterfall: boolean;
-  waterfallAngle: number;
 }
 
 const SPIRE_DEFS: SpireDef[] = [
-  { x: 175, y: 22, z: 85, height: 95, radius: 22, hasWaterfall: true, waterfallAngle: -0.4 },
-  { x: -195, y: 40, z: -95, height: 125, radius: 28, hasWaterfall: true, waterfallAngle: 1.2 },
-  { x: 265, y: -8, z: -215, height: 110, radius: 26, hasWaterfall: false, waterfallAngle: 0 },
-  { x: -285, y: 52, z: 145, height: 145, radius: 32, hasWaterfall: true, waterfallAngle: 2.1 },
-  { x: 85, y: 68, z: -365, height: 160, radius: 38, hasWaterfall: true, waterfallAngle: 0.8 },
-  { x: -95, y: -12, z: 345, height: 85, radius: 20, hasWaterfall: false, waterfallAngle: 0 },
-  { x: 345, y: 32, z: 225, height: 135, radius: 30, hasWaterfall: true, waterfallAngle: -1.8 },
+  { x: 175, y: 22, z: 85, height: 95, radius: 22 },
+  { x: -195, y: 40, z: -95, height: 125, radius: 28 },
+  { x: 265, y: -8, z: -215, height: 110, radius: 26 },
+  { x: -285, y: 52, z: 145, height: 145, radius: 32 },
+  { x: 85, y: 68, z: -365, height: 160, radius: 38 },
+  { x: -95, y: -12, z: 345, height: 85, radius: 20 },
+  { x: 345, y: 32, z: 225, height: 135, radius: 30 },
 ];
+
+const SPIRE_AERIAL_VERTEX_SHADER = /* glsl */ `
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
+
+void main() {
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  vWorldPos = wp.xyz;
+  vWorldNormal = normalize(mat3(modelMatrix) * normal);
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}
+`;
+
+const SPIRE_AERIAL_FRAGMENT_SHADER = /* glsl */ `
+uniform vec3 uBaseColor;
+uniform vec3 uHorizonColor;
+uniform vec3 uMidSkyColor;
+uniform vec3 uTopSkyColor;
+uniform vec3 uKeyColor;
+uniform vec3 uKeyDir;
+uniform float uSunVis;
+
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
+
+void main() {
+  vec3 toFrag = vWorldPos - cameraPosition;
+  float dist = length(toFrag);
+  vec3 viewDir = toFrag / max(dist, 1e-4);
+  float elev = clamp(viewDir.y, 0.0, 1.0);
+
+  // Sample background sky colour at this fragment's view elevation
+  vec3 skyAtElev = mix(uHorizonColor, uMidSkyColor, smoothstep(0.0, 0.28, elev));
+  skyAtElev = mix(skyAtElev, uTopSkyColor, smoothstep(0.28, 0.78, elev));
+
+  vec3 norm = normalize(vWorldNormal);
+  vec3 keyDir = normalize(uKeyDir);
+  float ndotl = clamp(dot(norm, keyDir) * 0.5 + 0.5, 0.0, 1.0);
+
+  // Subtle horizontal rock strata bands
+  float strata = 0.90 + 0.10 * sin(vWorldPos.y * 0.42 + sin(vWorldPos.x * 0.08) * 1.5);
+  vec3 litSurface = uBaseColor * strata * mix(0.52, 0.92, ndotl);
+
+  // Warm rim on the sun-facing silhouette edge at dawn/dusk
+  float fresnel = pow(1.0 - clamp(abs(dot(norm, -viewDir)), 0.0, 1.0), 2.4);
+  float sunSide = max(0.0, dot(norm, keyDir));
+  litSurface += uKeyColor * (fresnel * sunSide * 0.22 * uSunVis);
+
+  // Exponential aerial perspective toward a darker silhouette value than the sky behind it (D10 fix)
+  float aerialT = clamp(1.0 - exp(-dist * 0.0042), 0.25, 0.86);
+  vec3 aerialTarget = skyAtElev * 0.76;
+  vec3 finalCol = mix(litSurface, aerialTarget, aerialT);
+
+  // Guarantee distant spire is always slightly darker than the background sky in daylight/dusk
+  vec3 maxAllowed = skyAtElev * 0.88;
+  finalCol = min(finalCol, maxAllowed);
+
+  // Soft base mist blend near cloud sea (y = -22 .. +2)
+  float baseMist = smoothstep(-24.0, 6.0, vWorldPos.y);
+  finalCol = mix(uHorizonColor * 0.86, finalCol, baseMist);
+
+  gl_FragColor = vec4(finalCol, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}
+`;
 
 export class DistantSpires extends THREE.Group {
   private readonly rockMesh: THREE.Mesh;
   private readonly foliageMesh: THREE.Mesh;
-  private readonly waterfallsMesh: THREE.Mesh;
 
-  private readonly rockMaterial: THREE.MeshStandardMaterial;
-  private readonly foliageMaterial: THREE.MeshStandardMaterial;
-  private readonly waterfallMaterial: THREE.MeshBasicMaterial;
+  private readonly rockMaterial: THREE.ShaderMaterial;
+  private readonly foliageMaterial: THREE.ShaderMaterial;
 
-  constructor(isPhone = false, assets?: AssetStore) {
+  constructor(isPhone = false, _assets?: AssetStore) {
     super();
+    this.name = 'DistantSpires';
 
-    // 1. Spire rock cones geometry (merged into 1 draw call)
     const spireGeos: THREE.BufferGeometry[] = [];
     const foliageGeos: THREE.BufferGeometry[] = [];
-    const waterfallGeos: THREE.BufferGeometry[] = [];
 
     const radialSegments = isPhone ? 24 : 36;
     const heightSegments = isPhone ? 32 : 54;
@@ -46,7 +107,6 @@ export class DistantSpires extends THREE.Group {
     for (let i = 0; i < SPIRE_DEFS.length; i++) {
       const def = SPIRE_DEFS[i]!;
 
-      // Build displaced tapered cone
       const cone = this.buildSpireGeometry(
         def.radius,
         def.height,
@@ -57,60 +117,56 @@ export class DistantSpires extends THREE.Group {
       cone.translate(def.x, def.y - def.height * 0.45, def.z);
       spireGeos.push(cone);
 
-      // Summit foliage crowns (pine and maple clumps)
-      const crown = this.buildSummitFoliage(def.x, def.y + def.height * 0.55, def.z, def.radius * 0.42);
+      const crown = this.buildSummitFoliage(
+        def.x,
+        def.y + def.height * 0.55,
+        def.z,
+        def.radius * 0.42,
+      );
       foliageGeos.push(crown);
-
-      // Waterfall ribbon falling from summit edge down to cloud sea (y = -22)
-      if (def.hasWaterfall) {
-        const wf = this.buildWaterfallRibbon(
-          def.x,
-          def.y + def.height * 0.52,
-          def.z,
-          def.radius * 0.88,
-          def.waterfallAngle,
-        );
-        waterfallGeos.push(wf);
-      }
     }
 
     const mergedRockGeo = BufferGeometryUtils.mergeGeometries(spireGeos, false)!;
     mergedRockGeo.computeVertexNormals();
 
     const mergedFoliageGeo = BufferGeometryUtils.mergeGeometries(foliageGeos, false)!;
-    const mergedWaterfallGeo = BufferGeometryUtils.mergeGeometries(waterfallGeos, false)!;
+    mergedFoliageGeo.computeVertexNormals();
 
-    const rockSlot = assets?.getSlot('rock');
+    const sharedUniforms = {
+      uHorizonColor: { value: new THREE.Color('#D68A6C') },
+      uMidSkyColor: { value: new THREE.Color('#7C629E') },
+      uTopSkyColor: { value: new THREE.Color('#342C5E') },
+      uKeyColor: { value: new THREE.Color('#FF9E58') },
+      uKeyDir: { value: new THREE.Vector3(0.5, 0.25, -0.5).normalize() },
+      uSunVis: { value: 1.0 },
+    };
 
-    // Materials with heavy aerial perspective
-    this.rockMaterial = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#7A7482').multiplyScalar(rockSlot?.albedoGain ?? 1.0), // purple-grey rock with distance haze
-      map: rockSlot?.diff,
-      normalMap: rockSlot?.nor,
-      roughness: 0.92,
-      metalness: 0.05,
+    this.rockMaterial = new THREE.ShaderMaterial({
+      vertexShader: SPIRE_AERIAL_VERTEX_SHADER,
+      fragmentShader: SPIRE_AERIAL_FRAGMENT_SHADER,
+      uniforms: {
+        ...sharedUniforms,
+        uBaseColor: { value: new THREE.Color('#4A4458') },
+      },
     });
 
-    this.foliageMaterial = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#3A5E38'), // deep pine green
-      roughness: 0.85,
-      metalness: 0.0,
-    });
-
-    this.waterfallMaterial = new THREE.MeshBasicMaterial({
-      color: new THREE.Color('#8ED6E8'), // cyan-teal water ribbon
-      transparent: true,
-      opacity: 0.72,
-      depthWrite: false,
+    this.foliageMaterial = new THREE.ShaderMaterial({
+      vertexShader: SPIRE_AERIAL_VERTEX_SHADER,
+      fragmentShader: SPIRE_AERIAL_FRAGMENT_SHADER,
+      uniforms: {
+        ...sharedUniforms,
+        uBaseColor: { value: new THREE.Color('#2B4632') },
+      },
     });
 
     this.rockMesh = new THREE.Mesh(mergedRockGeo, this.rockMaterial);
+    this.rockMesh.name = 'DistantSpiresRock';
     this.foliageMesh = new THREE.Mesh(mergedFoliageGeo, this.foliageMaterial);
-    this.waterfallsMesh = new THREE.Mesh(mergedWaterfallGeo, this.waterfallMaterial);
+    this.foliageMesh.name = 'DistantSpiresFoliage';
 
+    // Note: Removed the 160m unlit #8ED6E8 waterfall plane strips that caused the pale-blue vertical sky line defect (D9).
     this.add(this.rockMesh);
     this.add(this.foliageMesh);
-    this.add(this.waterfallsMesh);
   }
 
   private buildSpireGeometry(
@@ -121,8 +177,8 @@ export class DistantSpires extends THREE.Group {
     phase: number,
   ): THREE.BufferGeometry {
     const geo = new THREE.CylinderGeometry(
-      radius * 0.28, // top radius
-      radius * 1.15, // base radius
+      radius * 0.28,
+      radius * 1.15,
       height,
       radialSeg,
       heightSeg,
@@ -137,10 +193,13 @@ export class DistantSpires extends THREE.Group {
       const angle = Math.atan2(pz, px);
       const hFrac = (py + height * 0.5) / height;
 
-      // Ridged noise displacement along spire body
       const ridge1 = Math.abs(Math.sin(angle * 5.0 + hFrac * 12.0 + phase));
       const ridge2 = Math.sin(angle * 8.0 - hFrac * 18.0) * 0.5 + 0.5;
-      const disp = (ridge1 * 0.65 + ridge2 * 0.35) * radius * 0.32 * Math.sin(hFrac * Math.PI);
+      const disp =
+        (ridge1 * 0.65 + ridge2 * 0.35) *
+        radius *
+        0.32 *
+        Math.sin(hFrac * Math.PI);
 
       const len = Math.hypot(px, pz);
       if (len > 1e-4) {
@@ -176,41 +235,21 @@ export class DistantSpires extends THREE.Group {
     return BufferGeometryUtils.mergeGeometries(crowns, false)!;
   }
 
-  private buildWaterfallRibbon(
-    cx: number,
-    topY: number,
-    cz: number,
-    radius: number,
-    angle: number,
-  ): THREE.BufferGeometry {
-    const startX = cx + Math.cos(angle) * radius;
-    const startZ = cz + Math.sin(angle) * radius;
-    const botY = -22; // cloud sea level
-    const lenY = topY - botY;
-
-    // Plane strip facing outwards
-    const ribbon = new THREE.PlaneGeometry(1.8, lenY, 1, 8);
-    ribbon.translate(0, -lenY * 0.5, 0);
-
-    const normalAngle = angle;
-    ribbon.rotateY(-normalAngle + Math.PI * 0.5);
-    ribbon.translate(startX, topY, startZ);
-
-    return ribbon;
-  }
-
   syncSky(skyState: TimeOfDayState): void {
-    // Aerial perspective adjusts with horizon / fog color
-    this.rockMaterial.color.copy(skyState.fog).lerp(new THREE.Color('#5E5868'), 0.45);
+    const u = this.rockMaterial.uniforms;
+    (u.uHorizonColor!.value as THREE.Color).copy(skyState.horizon);
+    (u.uMidSkyColor!.value as THREE.Color).copy(skyState.mid);
+    (u.uTopSkyColor!.value as THREE.Color).copy(skyState.zenith);
+    (u.uKeyColor!.value as THREE.Color).copy(skyState.keyColor);
+    (u.uKeyDir!.value as THREE.Vector3).copy(skyState.keyLightDirection);
+    u.uSunVis!.value = skyState.sunVisibility;
   }
 
   override dispose(): void {
     this.rockMesh.geometry.dispose();
     this.foliageMesh.geometry.dispose();
-    this.waterfallsMesh.geometry.dispose();
 
     this.rockMaterial.dispose();
     this.foliageMaterial.dispose();
-    this.waterfallMaterial.dispose();
   }
 }

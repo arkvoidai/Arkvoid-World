@@ -262,38 +262,46 @@ vec3 perturbNormal2Arb(vec3 surf_pos, vec3 surf_norm, vec3 normalSample) {
   pathNor.y = mix(1.0 - pathNor.y, pathNor.y, uPathFlip);
   float pathR = texture2D(tPathArm, uvPath).g;
 
-  // Biplanar rock sampling for cliffs (XZ and dominant vertical axis)
-  vec2 uvRockXZ = uvXZ * uRockUvScale;
-  vec2 uvRockVert = vec2(vWorldPos.x + vWorldPos.z, vWorldPos.y) * uRockUvScale;
-  float vertWeight = clamp(1.0 - abs(slope) * 1.2, 0.0, 1.0);
-  vec4 rockColXZ = texture2D(tRockDiff, uvRockXZ);
-  vec4 rockColVert = texture2D(tRockDiff, uvRockVert);
-  vec4 rockCol = mix(rockColXZ, rockColVert, vertWeight * 0.75);
+  // True world-space Triplanar rock sampling for cliffs & undersides (eliminates vertical UV streaks D6)
+  vec3 triW = pow(abs(geomNormal), vec3(4.0));
+  triW /= max(triW.x + triW.y + triW.z, 1e-4);
+
+  vec2 uvRockX = vWorldPos.zy * uRockUvScale;
+  vec2 uvRockY = vWorldPos.xz * uRockUvScale;
+  vec2 uvRockZ = vWorldPos.xy * uRockUvScale;
+
+  vec4 rockCol = texture2D(tRockDiff, uvRockX) * triW.x
+               + texture2D(tRockDiff, uvRockY) * triW.y
+               + texture2D(tRockDiff, uvRockZ) * triW.z;
   rockCol.rgb *= uRockGain * uRockTint;
 
-  // Rock tile-break on desktop
-  if (uIsPhone < 0.5) {
-    vec2 uvRock2 = mat2(0.707, -0.707, 0.707, 0.707) * uvRockXZ * 1.41;
-    vec4 rockCol2 = texture2D(tRockDiff, uvRock2) * vec4(uRockGain * uRockTint, 1.0);
-    rockCol = mix(rockCol, rockCol2, 0.35);
-  }
+  // Horizontal geological strata bands on steep cliff & underside faces
+  float strataWave = sin(vWorldPos.y * 1.85 + sin(vWorldPos.x * 0.22 + vWorldPos.z * 0.19) * 1.4);
+  float strataBand = mix(0.88, 1.10, smoothstep(-0.6, 0.6, strataWave));
+  rockCol.rgb *= mix(1.0, strataBand, clamp(1.0 - abs(slope), 0.0, 1.0));
 
-  vec3 rockNor = mix(texture2D(tRockNor, uvRockXZ).xyz, texture2D(tRockNor, uvRockVert).xyz, vertWeight * 0.75);
+  vec3 rockNor = texture2D(tRockNor, uvRockX).xyz * triW.x
+               + texture2D(tRockNor, uvRockY).xyz * triW.y
+               + texture2D(tRockNor, uvRockZ).xyz * triW.z;
   rockNor.y = mix(1.0 - rockNor.y, rockNor.y, uRockFlip);
-  float rockR = texture2D(tRockArm, uvRockXZ).g;
+  float rockR = texture2D(tRockArm, uvRockY).g;
 
   // 2. Layer Blend Weights
   // Rock on steep slopes (slope < 0.78), plus cliff face / underside body
-  float rockWeight = smoothstep(0.84, 0.72, slope);
+  float rockWeight = smoothstep(0.84, 0.70, slope);
   if (vWorldPos.y < uBaseY - 1.2) {
-    rockWeight = max(rockWeight, smoothstep(uBaseY - 1.2, uBaseY - 2.8, vWorldPos.y));
+    rockWeight = max(rockWeight, smoothstep(uBaseY - 1.2, uBaseY - 2.6, vWorldPos.y));
   }
+
+  // Upward-facing cliff ledges accumulate moss (geomNormal.y > 0.35 on cliff rim)
+  float ledgeMoss = smoothstep(0.35, 0.68, slope) * smoothstep(uBaseY - 6.0, uBaseY - 0.3, vWorldPos.y) * 0.45;
 
   // Path from baked vertex attribute with soft edges
   float pathWeight = vPath * (1.0 - rockWeight);
 
-  // Moss in damp / shaded / north-facing areas
-  float mossWeight = vMoss * (1.0 - rockWeight) * (1.0 - pathWeight);
+  // Moss in damp / shaded / north-facing areas + upward cliff ledges
+  float mossWeight = clamp(vMoss * (1.0 - rockWeight) * (1.0 - pathWeight) + ledgeMoss, 0.0, 1.0);
+  rockWeight = max(0.0, rockWeight - ledgeMoss * 0.6);
 
   // Grass fills the remainder
   float grassWeight = max(0.0, 1.0 - rockWeight - pathWeight - mossWeight);
@@ -325,13 +333,11 @@ vec3 perturbNormal2Arb(vec3 surf_pos, vec3 surf_norm, vec3 normalSample) {
   float wetFactor = smoothstep(2.8, 0.4, vShore);
   blendedAlbedo = mix(blendedAlbedo, blendedAlbedo * 0.68, wetFactor * 0.85);
 
-  // Underside rock gradient: darker purple-grey tint and vertical mist haze
+  // Underside rock gradient: natural warm-grey rock with at most 12% cool shadow tint near bottom tip
   if (vWorldPos.y < uBaseY - 2.0) {
     float underDepth = clamp((uBaseY - 2.0 - vWorldPos.y) / 22.0, 0.0, 1.0);
-    vec3 underTint = vec3(0.42, 0.39, 0.47);
-    blendedAlbedo = mix(blendedAlbedo, blendedAlbedo * underTint * 1.15, underDepth * 0.65);
-    vec3 mistHaze = vec3(0.58, 0.54, 0.68);
-    blendedAlbedo = mix(blendedAlbedo, mistHaze, smoothstep(0.45, 1.0, underDepth) * 0.45);
+    vec3 coolRockShadow = vec3(0.54, 0.50, 0.58);
+    blendedAlbedo = mix(blendedAlbedo, blendedAlbedo * coolRockShadow * 1.35, underDepth * 0.12);
   }
 
   // Multiply Ambient Occlusion (aAO)
@@ -405,6 +411,15 @@ vec3 perturbNormal2Arb(vec3 surf_pos, vec3 surf_norm, vec3 normalSample) {
     this.customUniforms.uPathFlip.value = path.flipGreen ? 0.0 : 1.0;
 
     this.needsUpdate = true;
+  }
+
+  hasTerrainMaps(): boolean {
+    return Boolean(
+      this.customUniforms.tGrassDiff.value &&
+        this.customUniforms.tMossDiff.value &&
+        this.customUniforms.tRockDiff.value &&
+        this.customUniforms.tPathDiff.value,
+    );
   }
 
   syncSkyState(skyState: TimeOfDayState, elapsed: number): void {

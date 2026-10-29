@@ -9,6 +9,7 @@ import {
   streamDistance,
 } from '@/engine/world/terrain';
 import { ISLANDS, type IslandKey, islandRadiusAtAngle } from '@/engine/world/layout';
+import type { AssetStore } from '@/engine/core/AssetStore';
 
 let cachedFlowerAtlas: THREE.Texture | null = null;
 
@@ -174,10 +175,32 @@ export class FlowerSystem extends THREE.Group {
     return this.mushroomsMesh;
   }
 
-  constructor(windUniforms: WindUniforms, isPhone = false) {
+  constructor(windUniforms: WindUniforms, isPhone = false, assets?: AssetStore) {
     super();
     this.buildFlowers(windUniforms, isPhone);
-    this.buildPebblesAndMushrooms(isPhone);
+    this.buildPebblesAndMushrooms(isPhone, assets);
+  }
+
+  updateTextures(assets?: AssetStore): void {
+    if (!assets) return;
+    const rockSlot = assets.getSlot('rock');
+    if (this.pebblesMesh) {
+      const mat = this.pebblesMesh.material as THREE.MeshStandardMaterial;
+      if (mat.map !== rockSlot.diff) {
+        mat.map = rockSlot.diff;
+        mat.normalMap = rockSlot.nor;
+        mat.needsUpdate = true;
+      }
+    }
+    const barkSlot = assets.getSlot('bark');
+    if (this.mushroomsMesh) {
+      const mat = this.mushroomsMesh.material as THREE.MeshStandardMaterial;
+      if (mat.map !== barkSlot.diff) {
+        mat.map = barkSlot.diff;
+        mat.normalMap = barkSlot.nor;
+        mat.needsUpdate = true;
+      }
+    }
   }
 
   update(_dt = 0.016, _elapsed = 0): void {
@@ -409,15 +432,20 @@ export class FlowerSystem extends THREE.Group {
     return list;
   }
 
-  private buildPebblesAndMushrooms(isPhone: boolean): void {
+  private buildPebblesAndMushrooms(isPhone: boolean, assets?: AssetStore): void {
     const pebbleCount = isPhone ? 120 : 380;
     const mushroomCount = isPhone ? 80 : 220;
+    const fallbackTex = createFlowerAtlas();
+    const rockSlot = assets?.getSlot('rock');
+    const barkSlot = assets?.getSlot('bark');
 
     // 1. Pebbles
     const pebbleGeo = new THREE.DodecahedronGeometry(0.08, 1);
     pebbleGeo.scale(1.2, 0.45, 0.9);
     const pebbleMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color('#7F7870'),
+      map: rockSlot?.diff ?? fallbackTex,
+      normalMap: rockSlot?.nor ?? null,
       roughness: 0.9,
     });
     this.pebblesMesh = new THREE.InstancedMesh(pebbleGeo, pebbleMat, pebbleCount);
@@ -447,6 +475,8 @@ export class FlowerSystem extends THREE.Group {
 
     const shroomMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color('#D9784E'),
+      map: barkSlot?.diff ?? fallbackTex,
+      normalMap: barkSlot?.nor ?? null,
       roughness: 0.7,
     });
     this.mushroomsMesh = new THREE.InstancedMesh(shroomCap, shroomMat, mushroomCount);

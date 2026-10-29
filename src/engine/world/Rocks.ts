@@ -80,12 +80,12 @@ export class RockSystem extends THREE.Group {
     const mossSlot = assets?.getSlot('moss');
 
     this.material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#948D85'),
-      roughness: 0.88,
-      metalness: 0.05,
-      map: rockSlot?.diff,
-      normalMap: rockSlot?.nor,
-      normalScale: new THREE.Vector2(0.85, 0.85),
+      color: new THREE.Color('#948D85').multiplyScalar(rockSlot?.albedoGain ?? 1.0),
+      roughness: 0.86,
+      metalness: 0.03,
+      map: rockSlot?.diff ?? null,
+      normalMap: rockSlot?.nor ?? null,
+      normalScale: new THREE.Vector2(0.95, 0.95),
       vertexColors: true,
     });
 
@@ -97,21 +97,23 @@ export class RockSystem extends THREE.Group {
           '#include <uv_pars_vertex>',
           /* glsl */ `
           #include <uv_pars_vertex>
-          varying vec2 vRockUv;
           varying vec3 vRockNormal;
+          varying vec3 vRockWorldPos;
           `,
         );
 
         shader.vertexShader = shader.vertexShader.replace(
-          '#include <uv_vertex>',
+          '#include <worldpos_vertex>',
           /* glsl */ `
-          #include <uv_vertex>
-          vRockUv = uv;
+          #include <worldpos_vertex>
           #ifdef USE_INSTANCING
+            vec4 rWp = modelMatrix * instanceMatrix * vec4(transformed, 1.0);
             vRockNormal = normalize((modelMatrix * instanceMatrix * vec4(normal, 0.0)).xyz);
           #else
+            vec4 rWp = modelMatrix * vec4(transformed, 1.0);
             vRockNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
           #endif
+          vRockWorldPos = rWp.xyz;
           `,
         );
 
@@ -119,8 +121,8 @@ export class RockSystem extends THREE.Group {
           '#include <uv_pars_fragment>',
           /* glsl */ `
           #include <uv_pars_fragment>
-          varying vec2 vRockUv;
           varying vec3 vRockNormal;
+          varying vec3 vRockWorldPos;
           uniform sampler2D uMossMap;
           `,
         );
@@ -130,9 +132,9 @@ export class RockSystem extends THREE.Group {
           /* glsl */ `
           #include <color_fragment>
           // Blend moss into upward-facing rock surfaces in world space
-          float upwardMoss = smoothstep(0.45, 0.80, vRockNormal.y) * 0.75;
-          vec4 mossTex = texture2D(uMossMap, vRockUv * 3.5);
-          diffuseColor.rgb = mix(diffuseColor.rgb, mossTex.rgb * vec3(0.85, 1.05, 0.75), upwardMoss);
+          float upwardMoss = smoothstep(0.42, 0.78, vRockNormal.y) * 0.72;
+          vec4 mossTex = texture2D(uMossMap, vRockWorldPos.xz * 0.45);
+          diffuseColor.rgb = mix(diffuseColor.rgb, mossTex.rgb * vec3(0.86, 1.04, 0.76), upwardMoss);
           `,
         );
       };
@@ -185,6 +187,7 @@ export class RockSystem extends THREE.Group {
   private createBoulderGeometry(): THREE.BufferGeometry {
     const geo = new THREE.IcosahedronGeometry(1.0, 3);
     const pos = geo.attributes.position!;
+    const uv = geo.attributes.uv;
     const count = pos.count;
     const colors = new Float32Array(count * 3);
 
@@ -193,27 +196,28 @@ export class RockSystem extends THREE.Group {
       let y = pos.getY(i);
       let z = pos.getZ(i);
 
-      // Ridged noise displacement
-      const r1 = Math.abs(Math.sin(x * 3.4 + y * 2.1) * Math.cos(z * 3.1));
-      const r2 = Math.sin(x * 6.8 - z * 5.2) * 0.5 + 0.5;
-      const disp = 1.0 + (r1 * 0.7 + r2 * 0.3) * 0.26;
+      // Smooth multi-frequency organic rock displacement (no sharp faceted spikes)
+      const n1 = Math.sin(x * 2.2 + y * 1.7) * Math.cos(z * 2.1 - x * 1.3);
+      const n2 = Math.sin(x * 4.1 - z * 3.6 + y * 2.8) * 0.5;
+      const disp = 1.0 + (n1 * 0.14 + n2 * 0.06);
       x *= disp;
-      y *= disp;
+      y *= disp * 0.86;
       z *= disp;
 
-      // Flatten bottom so the boulder sits firmly in the soil
-      if (y < -0.2) {
-        y = -0.2 + (y + 0.2) * 0.15;
+      // Embed base smoothly into the soil
+      if (y < -0.25) {
+        y = -0.25 + (y + 0.25) * 0.25;
       }
 
       pos.setXYZ(i, x, y, z);
+      if (uv) {
+        uv.setXY(i, (x + z) * 0.65, (y + z) * 0.65);
+      }
 
-      // Vertex color: moss tint on top, crevice darkening below
       const normalY = Math.max(0.0, y / disp);
-      const isCrevice = disp < 1.05 ? 0.78 : 1.0;
-      const r = (0.75 + normalY * 0.12) * isCrevice;
-      const g = (0.75 + normalY * 0.22) * isCrevice;
-      const b = (0.72 + normalY * 0.08) * isCrevice;
+      const r = 0.84 + normalY * 0.10;
+      const g = 0.83 + normalY * 0.14;
+      const b = 0.80 + normalY * 0.08;
 
       colors[i * 3] = r;
       colors[i * 3 + 1] = g;
@@ -381,6 +385,17 @@ export class RockSystem extends THREE.Group {
     }
 
     return list;
+  }
+
+  updateTextures(assets: AssetStore): void {
+    if (!this.material) return;
+    const rock = assets.getSlot('rock');
+    if (this.material.map !== rock.diff) {
+      this.material.map = rock.diff;
+      this.material.normalMap = rock.nor;
+      this.material.color.set('#948D85').multiplyScalar(rock.albedoGain);
+      this.material.needsUpdate = true;
+    }
   }
 
   override dispose(): void {

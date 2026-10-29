@@ -29,6 +29,8 @@ import {
   timeOfDayState,
 } from '@/engine/world/sky';
 import { hourNow, REVIEW_HOURS, setHourOverride } from '@/lib/worldClock';
+import { CameraRailController, BUILT_IN_RAILS } from '@/engine/core/CameraRail';
+import { BenchmarkSession, BENCHMARK_RAIL } from '@/engine/core/Benchmark';
 
 export class ShowcaseWorldSystem implements System {
   readonly id = 'world-showcase';
@@ -66,6 +68,8 @@ export class ShowcaseWorldSystem implements System {
   private unsubCommand: (() => void) | null = null;
 
   buildTimeMs = 0;
+  readonly railController = new CameraRailController();
+  private benchmarkSession: BenchmarkSession | null = null;
 
   constructor(initialReviewMode = false) {
     if (initialReviewMode) {
@@ -86,6 +90,26 @@ export class ShowcaseWorldSystem implements System {
     return this.reviewShotIndex;
   }
 
+  getBenchmarkSession(): BenchmarkSession | null {
+    return this.benchmarkSession;
+  }
+
+  getTrees(): TreeSystem | null {
+    return this.trees;
+  }
+
+  getSectArch(): SectArchitectureInstance | null {
+    return this.sectArch;
+  }
+
+  getMaterialLibrary(): MaterialLibrary | null {
+    return this.materialLibrary;
+  }
+
+  getWorldGroup(): THREE.Group | null {
+    return this.worldGroup;
+  }
+
   init(ctx: EngineContext): void {
     this.dispose();
     this.sceneRef = ctx.scene;
@@ -97,6 +121,19 @@ export class ShowcaseWorldSystem implements System {
       const params = new URLSearchParams(window.location.search);
       if (!params.has('time')) {
         setHourOverride(REVIEW_HOURS[0]);
+      }
+    }
+
+    // Dev preview query: ?rail=arrival|orbit|bridge-cross or ?bench=1
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const railParam = params.get('rail');
+      const benchParam = params.get('bench');
+      if (benchParam === '1') {
+        this.railController.play(BENCHMARK_RAIL, { loop: false });
+        this.benchmarkSession = new BenchmarkSession(ctx.device, 0, 'balanced');
+      } else if (railParam && BUILT_IN_RAILS[railParam]) {
+        this.railController.play(BUILT_IN_RAILS[railParam]!, { loop: true });
       }
     }
 
@@ -191,7 +228,7 @@ export class ShowcaseWorldSystem implements System {
     this.trees = new TreeSystem(this.wind.uniforms, ctx.assets, isPhone);
     this.worldGroup.add(this.trees);
 
-    this.flowers = new FlowerSystem(this.wind.uniforms, isPhone);
+    this.flowers = new FlowerSystem(this.wind.uniforms, isPhone, ctx.assets);
     this.worldGroup.add(this.flowers);
 
     const tierKey = ctx.device.deviceClass === 'desktop'
@@ -264,8 +301,11 @@ export class ShowcaseWorldSystem implements System {
     );
     for (let i = 0; i < this.islands.length; i++) {
       this.islands[i]!.syncSky(this.skyState, ctx.clock.elapsed);
+      this.islands[i]!.updateTextures(ctx.assets);
     }
     this.spires?.syncSky(this.skyState);
+    this.trees?.update(0, ctx.clock.elapsed, ctx.camera.position, this.skyState);
+    this.life?.update(0, ctx.clock.elapsed, this.skyState);
 
     this.buildTimeMs = Math.round((performance.now() - t0) * 100) / 100;
   }
@@ -323,13 +363,16 @@ export class ShowcaseWorldSystem implements System {
 
     for (let i = 0; i < this.islands.length; i++) {
       this.islands[i]!.syncSky(this.skyState, elapsed);
-      this.islands[i]!.terrainMaterial.updateTextures(ctx.assets);
+      this.islands[i]!.updateTextures(ctx.assets);
     }
     this.spires?.syncSky(this.skyState);
 
     // Living Nature & Water updates
     this.wind?.update(dt, elapsed, this.skyState, reduced);
+    this.rocks?.updateTextures(ctx.assets);
+    this.flowers?.updateTextures(ctx.assets);
     this.water?.update(dt, elapsed, this.skyState);
+    this.trees?.updateTextures(ctx.assets);
     this.trees?.update(dt, elapsed, ctx.camera.position, this.skyState);
     this.grass?.update(dt, elapsed, ctx.camera, this.activeLookTarget, this.skyState);
     this.life?.update(dt, elapsed, this.skyState);
@@ -353,7 +396,11 @@ export class ShowcaseWorldSystem implements System {
     }
 
     // Sync composer grading uniforms with current sky state
-    ctx.presenter.updateSky?.(this.skyState, elapsed);
+    ctx.presenter.updateSky?.(this.skyState, elapsed, ctx.camera);
+
+    if (this.benchmarkSession?.isActive()) {
+      this.benchmarkSession.recordFrame(dt, Math.max(0.1, dt * 1000), 'balanced');
+    }
   }
 
   private syncFog(force: boolean): void {
@@ -371,6 +418,11 @@ export class ShowcaseWorldSystem implements System {
   }
 
   private updateShowcaseCamera(dt: number, ctx: EngineContext): void {
+    if (this.railController.isPlaying()) {
+      this.railController.update(dt, ctx.camera);
+      return;
+    }
+
     if (this.reviewShotIndex !== null) {
       const shot = REVIEW_SHOTS[this.reviewShotIndex] ?? REVIEW_SHOTS[0]!;
       const targetFov = shot.fov ?? 52;
@@ -393,25 +445,27 @@ export class ShowcaseWorldSystem implements System {
       ctx.camera.updateProjectionMatrix();
     }
 
-    const radius = 52;
-    const baseHeight = 9;
+    const radius = 36;
+    const baseHeight = 7.5;
     const angularSpeed = ctx.device.reducedMotion ? 0 : 0.03;
 
     this.orbitAngle += dt * angularSpeed;
     const driftY = ctx.device.reducedMotion
       ? 0
-      : Math.sin(ctx.clock.elapsed * 0.35) * 0.6;
+      : Math.sin(ctx.clock.elapsed * 0.35) * 1.8;
+    const clampedY = Math.max(4.0, Math.min(11.0, baseHeight + driftY));
 
     this.activeLookTarget.copy(this.defaultLookTarget);
     ctx.camera.position.set(
       this.activeLookTarget.x + Math.cos(this.orbitAngle) * radius,
-      baseHeight + driftY,
+      clampedY,
       this.activeLookTarget.z + Math.sin(this.orbitAngle) * radius,
     );
     ctx.camera.lookAt(this.activeLookTarget);
   }
 
   dispose(): void {
+    this.railController.stop();
     if (this.unsubCommand) {
       this.unsubCommand();
       this.unsubCommand = null;

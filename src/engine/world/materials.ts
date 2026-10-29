@@ -59,8 +59,8 @@ export function patchHeightAndDistanceFog(): void {
     float fogFactor = clamp( distFactor * ( 0.35 + 0.65 * arkFogHeight ), 0.0, 1.0 );
   #endif
   float distShift = smoothstep( max(15.0, fogNear * 0.8), fogFar * 0.85, vFogDepth );
-  vec3 arkDuskPurple = vec3( 0.36, 0.23, 0.46 );
-  vec3 effectiveFogColor = mix( fogColor, mix( fogColor, arkDuskPurple, 0.40 ), distShift );
+  vec3 arkDuskPurple = vec3( 0.36, 0.28, 0.44 );
+  vec3 effectiveFogColor = mix( fogColor, mix( fogColor, arkDuskPurple, 0.08 ), distShift );
   gl_FragColor.rgb = mix( gl_FragColor.rgb, effectiveFogColor, clamp( fogFactor, 0.0, 1.0 ) );
 #endif
 `;
@@ -459,9 +459,13 @@ export class WorldMaterialBank {
       `arkvoid-paving-stone-${isPhone ? 'phone' : 'desk'}-v3`,
     );
 
+    const grassSlot = assets?.getSlot('grass');
+
     // 5. Island Top Grass (mid-grass green #5E8C3A with vertex colors for macro noise)
     this.grassTop = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(WORLD_PALETTE.grassMid),
+      color: new THREE.Color(WORLD_PALETTE.grassMid).multiplyScalar(grassSlot?.albedoGain ?? 1.0),
+      map: grassSlot?.diff ?? null,
+      normalMap: grassSlot?.nor ?? null,
       vertexColors: true,
       roughness: 0.85,
       metalness: 0.0,
@@ -634,7 +638,9 @@ export class WorldMaterialBank {
 
     // 14. Pavilion warm white ceiling
     this.ceilingWarm = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(WORLD_PALETTE.plaster),
+      color: new THREE.Color(WORLD_PALETTE.plaster).multiplyScalar(plasterSlot?.albedoGain ?? 1.0),
+      map: plasterSlot?.diff ?? null,
+      normalMap: plasterSlot?.nor ?? null,
       roughness: 0.55,
       metalness: 0.0,
       side: THREE.DoubleSide,
@@ -643,6 +649,7 @@ export class WorldMaterialBank {
     // 15. Sanctuary veiled silhouette material
     this.sanctuarySilhouette = new THREE.MeshStandardMaterial({
       color: new THREE.Color('#4E4564'),
+      map: stoneSlot?.diff ?? null,
       roughness: 0.9,
       metalness: 0.0,
     });
@@ -1025,44 +1032,86 @@ export class WorldMaterialBank {
     const roof = assets.getSlot('roof');
     const bark = assets.getSlot('bark');
 
+    const grass = assets.getSlot('grass');
+    if (this.grassTop.map !== grass.diff) {
+      this.grassTop.map = grass.diff;
+      this.grassTop.normalMap = grass.nor;
+      this.grassTop.color.set(WORLD_PALETTE.grassMid).multiplyScalar(grass.albedoGain);
+      this.grassTop.needsUpdate = true;
+    }
     if (this.porcelain.map !== plaster.diff) {
       this.porcelain.map = plaster.diff;
       this.porcelain.normalMap = plaster.nor;
+      this.porcelain.color.set(WORLD_PALETTE.plaster).multiplyScalar(plaster.albedoGain);
       this.porcelain.needsUpdate = true;
+    }
+    if (this.ceilingWarm.map !== plaster.diff) {
+      this.ceilingWarm.map = plaster.diff;
+      this.ceilingWarm.normalMap = plaster.nor;
+      this.ceilingWarm.color.set(WORLD_PALETTE.plaster).multiplyScalar(plaster.albedoGain);
+      this.ceilingWarm.needsUpdate = true;
     }
     if (this.plazaPorcelain.map !== path.diff) {
       this.plazaPorcelain.map = path.diff;
       this.plazaPorcelain.normalMap = path.nor;
+      this.plazaPorcelain.color.set(WORLD_PALETTE.pavingStone).multiplyScalar(path.albedoGain);
       this.plazaPorcelain.needsUpdate = true;
     }
     if (this.pavingStone.map !== stone.diff) {
       this.pavingStone.map = stone.diff;
       this.pavingStone.normalMap = stone.nor;
+      this.pavingStone.color.set(WORLD_PALETTE.pavingStone).multiplyScalar(stone.albedoGain);
       this.pavingStone.needsUpdate = true;
     }
     if (this.stone.map !== stone.diff) {
       this.stone.map = stone.diff;
       this.stone.normalMap = stone.nor;
+      this.stone.color.set(WORLD_PALETTE.rockWarmGrey).multiplyScalar(stone.albedoGain);
       this.stone.needsUpdate = true;
+    }
+    if (this.stoneVertex.map !== stone.diff) {
+      this.stoneVertex.map = stone.diff;
+      this.stoneVertex.normalMap = stone.nor;
+      this.stoneVertex.color.set(WORLD_PALETTE.rockWarmGrey).multiplyScalar(stone.albedoGain);
+      this.stoneVertex.needsUpdate = true;
+    }
+    if (this.stoneWarm.map !== stone.diff) {
+      this.stoneWarm.map = stone.diff;
+      this.stoneWarm.normalMap = stone.nor;
+      this.stoneWarm.color.set(WORLD_PALETTE.rockWarmGrey).multiplyScalar(stone.albedoGain);
+      this.stoneWarm.needsUpdate = true;
+    }
+    if (this.sanctuarySilhouette.map !== stone.diff) {
+      this.sanctuarySilhouette.map = stone.diff;
+      this.sanctuarySilhouette.needsUpdate = true;
     }
     if (this.glazedTile.map !== roof.diff) {
       this.glazedTile.map = roof.diff;
       this.glazedTile.normalMap = roof.nor;
+      const roofCol = new THREE.Color('#FFFFFF').lerp(new THREE.Color(WORLD_PALETTE.roofTileSlateTeal), 0.35);
+      this.glazedTile.color.copy(roofCol).multiplyScalar(roof.albedoGain);
       this.glazedTile.needsUpdate = true;
     }
     if (this.timber.map !== timber.diff) {
       this.timber.map = timber.diff;
       this.timber.normalMap = timber.nor;
+      this.timber.color.set(WORLD_PALETTE.timber).multiplyScalar(timber.albedoGain);
       this.timber.needsUpdate = true;
     }
     if (this.lacquerVermilion.map !== timber.diff) {
       this.lacquerVermilion.map = timber.diff;
       this.lacquerVermilion.normalMap = timber.nor;
+      const colColor = new THREE.Color(WORLD_PALETTE.timber).lerp(
+        new THREE.Color(WORLD_PALETTE.lacquerVermilion),
+        0.55,
+      );
+      this.lacquerVermilion.color.copy(colColor).multiplyScalar(timber.albedoGain);
       this.lacquerVermilion.needsUpdate = true;
     }
     if (this.bark.map !== bark.diff) {
       this.bark.map = bark.diff;
       this.bark.normalMap = bark.nor;
+      this.bark.color.set(WORLD_PALETTE.bark).multiplyScalar(bark.albedoGain);
       this.bark.needsUpdate = true;
     }
   }

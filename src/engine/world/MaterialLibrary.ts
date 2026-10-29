@@ -140,54 +140,85 @@ export class MaterialLibrary {
       material = new THREE.MeshStandardMaterial(matParams);
     }
 
-    // If biplanar mapping requested, inject shader logic
-    if (options.mapping === 'biplanar') {
-      const uvScale = options.uvScale ?? (1.0 / tuning.uvScaleMeters);
-      material.onBeforeCompile = (shader) => {
-        shader.uniforms.uBiplanarScale = { value: uvScale };
-        shader.vertexShader = shader.vertexShader.replace(
-          '#include <uv_pars_vertex>',
-          `#include <uv_pars_vertex>
-varying vec3 vBiplanarPos;
-varying vec3 vBiplanarNormal;
+    // Inject uAmbientFloor (0.16) + warm ground bounce & eave bounce so shaded walls never crush to dark navy
+    const uvScale = options.uvScale ?? (1.0 / tuning.uvScaleMeters);
+    const isBiplanar = options.mapping === 'biplanar';
+    const ambientFloor = slot === 'plaster' ? 0.22 : 0.14;
+
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.uAmbientFloor = { value: ambientFloor };
+      shader.uniforms.uBiplanarScale = { value: uvScale };
+
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <uv_pars_vertex>',
+        `#include <uv_pars_vertex>
+varying vec3 vMatWorldPos;
+varying vec3 vMatWorldNormal;
 `,
-        );
-        shader.vertexShader = shader.vertexShader.replace(
-          '#include <worldpos_vertex>',
-          `#include <worldpos_vertex>
-vBiplanarPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
-vBiplanarNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <worldpos_vertex>',
+        `#include <worldpos_vertex>
+#ifdef USE_INSTANCING
+  vMatWorldPos = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+  vMatWorldNormal = normalize((modelMatrix * instanceMatrix * vec4(normal, 0.0)).xyz);
+#else
+  vMatWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+  vMatWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+#endif
 `,
-        );
-        shader.fragmentShader = shader.fragmentShader.replace(
-          '#include <uv_pars_fragment>',
-          `#include <uv_pars_fragment>
-varying vec3 vBiplanarPos;
-varying vec3 vBiplanarNormal;
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <uv_pars_fragment>',
+        `#include <uv_pars_fragment>
+varying vec3 vMatWorldPos;
+varying vec3 vMatWorldNormal;
+uniform float uAmbientFloor;
 uniform float uBiplanarScale;
 `,
-        );
+      );
+
+      if (isBiplanar) {
         shader.fragmentShader = shader.fragmentShader.replace(
           '#include <map_fragment>',
           `
 #ifdef USE_MAP
-  vec3 n = abs(normalize(vBiplanarNormal));
-  vec2 uvSide = vec2(vBiplanarPos.x + vBiplanarPos.z, vBiplanarPos.y) * uBiplanarScale;
-  vec2 uvTop = vBiplanarPos.xz * uBiplanarScale;
-  float topW = smoothstep(0.4, 0.8, n.y);
+  vec3 nBip = abs(normalize(vMatWorldNormal));
+  vec2 uvSide = vec2(vMatWorldPos.x + vMatWorldPos.z, vMatWorldPos.y) * uBiplanarScale;
+  vec2 uvTop = vMatWorldPos.xz * uBiplanarScale;
+  float topW = smoothstep(0.4, 0.8, nBip.y);
   vec4 sideTex = texture2D(map, uvSide);
   vec4 topTex = texture2D(map, uvTop);
   diffuseColor *= mix(sideTex, topTex, topW);
 #endif
 `,
         );
-      };
-    }
+      }
 
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <lights_fragment_end>',
+        `#include <lights_fragment_end>
+  // Warm ground bounce on lower 2.5 m and warm timber eave bounce under roof eaves
+  float groundBounce = smoothstep(2.6, 0.0, max(0.0, vMatWorldPos.y - 2.2)) * 0.08;
+  vec3 warmFloor = diffuseColor.rgb * (uAmbientFloor + groundBounce) * vec3(1.06, 0.98, 0.88);
+  reflectedLight.indirectDiffuse = max(reflectedLight.indirectDiffuse, warmFloor);
+`,
+      );
+    };
+
+    material.userData.arkSlot = slot;
     this.cache.set(key, material);
     this.registeredMaterials.add({ mat: material, slot, options });
 
     return material;
+  }
+
+  getRegisteredMaterials(): ReadonlySet<{
+    mat: THREE.MeshStandardMaterial;
+    slot: TextureSlotId;
+    options: MaterialOptions;
+  }> {
+    return this.registeredMaterials;
   }
 
   /**
@@ -200,6 +231,14 @@ uniform float uBiplanarScale;
 
       if (reg.mat.map !== slotState.diff) {
         reg.mat.map = slotState.diff;
+        // Recompute tint with real albedoGain
+        const tuning = TEXTURE_TUNING[reg.slot];
+        const baseTint = reg.options.tint
+          ? new THREE.Color(reg.options.tint)
+          : new THREE.Color('#FFFFFF');
+        baseTint.multiply(new THREE.Color(tuning.tintMultiplier));
+        baseTint.multiplyScalar(slotState.albedoGain);
+        reg.mat.color.copy(baseTint);
         needsMatUpdate = true;
       }
       if (reg.mat.normalMap !== slotState.nor) {

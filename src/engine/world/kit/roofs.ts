@@ -26,16 +26,28 @@ export function createHipAndGableRoofGeometry(
 ): THREE.BufferGeometry {
   const halfW = width * 0.5 + overhang;
   const halfD = depth * 0.5 + overhang;
-  const ridgeHalfLen = Math.max(1.2, (width - depth) * 0.48);
+  const ridgeAlongZ = depth > width;
+  const ridgeHalfLen = Math.max(1.2, Math.abs(width - depth) * 0.48);
 
   // Height function for the roof surface
   const evalHeight = (x: number, z: number): { y: number; isNorth: boolean } => {
     const ax = Math.abs(x);
     const az = Math.abs(z);
 
-    const excessX = Math.max(0, ax - ridgeHalfLen);
-    const rx = excessX / Math.max(0.01, halfW - ridgeHalfLen);
-    const rz = az / halfD;
+    let rx: number;
+    let rz: number;
+    let ridgeFrac: number;
+    if (ridgeAlongZ) {
+      const excessZ = Math.max(0, az - ridgeHalfLen);
+      rx = ax / halfW;
+      rz = excessZ / Math.max(0.01, halfD - ridgeHalfLen);
+      ridgeFrac = az / halfD;
+    } else {
+      const excessX = Math.max(0, ax - ridgeHalfLen);
+      rx = excessX / Math.max(0.01, halfW - ridgeHalfLen);
+      rz = az / halfD;
+      ridgeFrac = ax / halfW;
+    }
 
     // Concave pitch curve: steep near ridge, flattening towards eaves
     const r = Math.min(1.05, Math.max(rx, rz) * 0.85 + Math.hypot(rx, rz) * 0.15);
@@ -46,7 +58,7 @@ export function createHipAndGableRoofGeometry(
     const upturnHeight = upturn * Math.pow(smoothstep(0.72, 1.0, clampedR), 2.0) * (0.3 + 0.7 * cornerMask);
 
     // Ridge curvature: central ridge sags slightly, rising at ends
-    const ridgeRise = Math.pow(ax / halfW, 2.0) * 0.25;
+    const ridgeRise = Math.pow(ridgeFrac, 2.0) * 0.22;
 
     const baseH = height * Math.pow(Math.max(0, 1.0 - clampedR), 1.55);
     const y = baseH + upturnHeight + ridgeRise;

@@ -51,12 +51,12 @@ export class IslandLandformMesh extends THREE.Group {
     this.terrainMesh.castShadow = true;
     this.add(this.terrainMesh);
 
-    // 3. Hanging rock spikes under rim (8 to 12 spikes)
+    // 3. Hanging rock spikes under rim & draped roots
     if (this.island.reachable) {
-      this.spikesMesh = this.buildHangingSpikes(isPhone);
+      this.spikesMesh = this.buildHangingSpikes(isPhone, assetStore);
       if (this.spikesMesh) this.add(this.spikesMesh);
 
-      this.rootsMesh = this.buildDrapedRoots(isPhone);
+      this.rootsMesh = this.buildDrapedRoots(isPhone, assetStore);
       if (this.rootsMesh) this.add(this.rootsMesh);
     }
   }
@@ -262,19 +262,67 @@ export class IslandLandformMesh extends THREE.Group {
     return geo;
   }
 
-  private buildHangingSpikes(isPhone: boolean): THREE.InstancedMesh {
-    const count = isPhone ? 8 : 12;
-    // Tapered inverted cone for hanging rock spikes
-    const spikeGeo = new THREE.ConeGeometry(1.1, 7.5, 6);
-    spikeGeo.rotateX(Math.PI); // point down
+  private createRockSpikeGeometry(): THREE.BufferGeometry {
+    const radialSegs = 12;
+    const heightSegs = 10;
+    const height = 6.2;
+    const baseR = 1.15;
+    // Cylinder from y = 0 (rooted inside underside rock) down to y = -height (rounded tip)
+    const geo = new THREE.CylinderGeometry(baseR, 0.14, height, radialSegs, heightSegs, false);
+    geo.translate(0, -height * 0.5, 0);
 
+    const pos = geo.attributes.position!;
+    const uv = geo.attributes.uv!;
+    for (let i = 0; i < pos.count; i++) {
+      let x = pos.getX(i);
+      const y = pos.getY(i);
+      let z = pos.getZ(i);
+
+      const t = Math.max(0, Math.min(1, -y / height)); // 0 at top root, 1 at bottom tip
+      const angle = Math.atan2(z, x);
+
+      // Taper with organic rock ridges and slight natural bend
+      const taper = Math.pow(1.0 - t * 0.86, 0.85);
+      const ridge =
+        1.0 +
+        0.18 * Math.sin(angle * 3.0 + t * 5.5) +
+        0.10 * Math.cos(angle * 5.0 - t * 8.0);
+      const r = Math.hypot(x, z);
+      if (r > 1e-4) {
+        const targetR = baseR * taper * ridge;
+        x = (x / r) * targetR + Math.sin(t * Math.PI) * 0.22;
+        z = (z / r) * targetR + Math.cos(t * Math.PI * 0.8) * 0.16;
+      }
+
+      pos.setXYZ(i, x, y, z);
+      // Metric UVs (2.5m per tile)
+      uv.setXY(i, (angle / (Math.PI * 2)) * 2.0, -y / 2.5);
+    }
+
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  private buildHangingSpikes(
+    isPhone: boolean,
+    assetStore: AssetStore,
+  ): THREE.InstancedMesh {
+    const clusterCount = isPhone ? 4 : 6;
+    const spikesPerCluster = 2;
+    const count = clusterCount * spikesPerCluster;
+    const spikeGeo = this.createRockSpikeGeometry();
+
+    const rockSlot = assetStore.getSlot('rock');
     const spikeMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#787068'),
+      color: new THREE.Color('#8A8279').multiplyScalar(rockSlot.albedoGain),
+      map: rockSlot.diff,
+      normalMap: rockSlot.nor,
       roughness: 0.88,
-      metalness: 0.05,
+      metalness: 0.03,
     });
 
     const mesh = new THREE.InstancedMesh(spikeGeo, spikeMat, count);
+    mesh.name = `IslandSpikes_${this.island.key}`;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
 
@@ -283,17 +331,66 @@ export class IslandLandformMesh extends THREE.Group {
     const cz = this.island.center.z;
     const baseR = this.island.radius;
 
+    let idx = 0;
+    for (let c = 0; c < clusterCount; c++) {
+      const baseAngle = (c / clusterCount) * Math.PI * 2 + 0.42;
+      for (let k = 0; k < spikesPerCluster; k++) {
+        const angle = baseAngle + k * 0.09;
+        // Rooted well inside the underside rock body (rFrac 0.58..0.72) so they never float in front of the cliff
+        const rFrac = k === 0 ? 0.64 : 0.58;
+        const rimR = islandRadiusAtAngle(this.island.key, baseR, angle);
+        const r = rimR * rFrac;
+        const px = cx + Math.cos(angle) * r;
+        const pz = cz + Math.sin(angle) * r;
+        // Embed top of spike 2.5m inside the underside rock mass
+        const py = this.island.topY - 4.2 - k * 1.1;
+
+        dummy.position.set(px, py, pz);
+        const scaleXZ = k === 0 ? 0.95 : 0.68;
+        const scaleY = k === 0 ? 1.05 : 0.72;
+        dummy.scale.set(scaleXZ, scaleY, scaleXZ);
+        dummy.rotation.set((k === 0 ? 0.06 : -0.08), angle, 0.05);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(idx++, dummy.matrix);
+      }
+    }
+
+    mesh.instanceMatrix.needsUpdate = true;
+    return mesh;
+  }
+
+  private buildDrapedRoots(
+    isPhone: boolean,
+    assetStore: AssetStore,
+  ): THREE.InstancedMesh {
+    const count = isPhone ? 6 : 10;
+    const rootGeo = new THREE.CylinderGeometry(0.08, 0.22, 4.8, 8, 6);
+    const barkSlot = assetStore.getSlot('bark');
+    const rootMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color('#5B4030').multiplyScalar(barkSlot.albedoGain),
+      map: barkSlot.diff,
+      normalMap: barkSlot.nor,
+      roughness: 0.90,
+      metalness: 0.02,
+    });
+
+    const mesh = new THREE.InstancedMesh(rootGeo, rootMat, count);
+    mesh.name = `IslandRoots_${this.island.key}`;
+    const dummy = new THREE.Object3D();
+    const cx = this.island.center.x;
+    const cz = this.island.center.z;
+    const baseR = this.island.radius;
+
     for (let i = 0; i < count; i++) {
-      const angle = (i / count) * Math.PI * 2 + 0.35;
-      const r = islandRadiusAtAngle(this.island.key, baseR, angle) * (0.84 + (i % 3) * 0.04);
+      const angle = (i / count) * Math.PI * 2 + 0.72;
+      const r = islandRadiusAtAngle(this.island.key, baseR, angle) * 0.88;
       const px = cx + Math.cos(angle) * r;
       const pz = cz + Math.sin(angle) * r;
-      const py = this.island.topY - 2.8 - (i % 4) * 2.2;
+      const py = this.island.topY - 2.6 - (i % 3) * 0.6;
 
       dummy.position.set(px, py, pz);
-      const scale = 0.75 + (i % 5) * 0.18;
-      dummy.scale.set(scale, scale * (1.0 + (i % 3) * 0.3), scale);
-      dummy.rotation.set((i % 3) * 0.08, angle, (i % 2) * -0.08);
+      dummy.rotation.set(0.18, angle + 0.4, (i % 2) * 0.12);
+      dummy.scale.set(1.0, 0.8 + (i % 3) * 0.2, 1.0);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
     }
@@ -302,38 +399,28 @@ export class IslandLandformMesh extends THREE.Group {
     return mesh;
   }
 
-  private buildDrapedRoots(isPhone: boolean): THREE.InstancedMesh {
-    const count = isPhone ? 6 : 10;
-    // Thin tapered cylinder tubes draping over cliff rim
-    const rootGeo = new THREE.CylinderGeometry(0.08, 0.22, 5.2, 5);
-    const rootMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#523D2E'),
-      roughness: 0.90,
-      metalness: 0.02,
-    });
-
-    const mesh = new THREE.InstancedMesh(rootGeo, rootMat, count);
-    const dummy = new THREE.Object3D();
-    const cx = this.island.center.x;
-    const cz = this.island.center.z;
-    const baseR = this.island.radius;
-
-    for (let i = 0; i < count; i++) {
-      const angle = (i / count) * Math.PI * 2 + 0.72;
-      const r = islandRadiusAtAngle(this.island.key, baseR, angle) * 0.94;
-      const px = cx + Math.cos(angle) * r;
-      const pz = cz + Math.sin(angle) * r;
-      const py = this.island.topY - 2.2 - (i % 3) * 0.8;
-
-      dummy.position.set(px, py, pz);
-      dummy.rotation.set(0.2, angle + 0.4, (i % 2) * 0.15);
-      dummy.scale.set(1.0, 0.8 + (i % 3) * 0.25, 1.0);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
+  updateTextures(assetStore: AssetStore): void {
+    this.terrainMaterial.updateTextures(assetStore);
+    if (this.spikesMesh) {
+      const rock = assetStore.getSlot('rock');
+      const mat = this.spikesMesh.material as THREE.MeshStandardMaterial;
+      if (mat.map !== rock.diff) {
+        mat.map = rock.diff;
+        mat.normalMap = rock.nor;
+        mat.color.set('#8A8279').multiplyScalar(rock.albedoGain);
+        mat.needsUpdate = true;
+      }
     }
-
-    mesh.instanceMatrix.needsUpdate = true;
-    return mesh;
+    if (this.rootsMesh) {
+      const bark = assetStore.getSlot('bark');
+      const mat = this.rootsMesh.material as THREE.MeshStandardMaterial;
+      if (mat.map !== bark.diff) {
+        mat.map = bark.diff;
+        mat.normalMap = bark.nor;
+        mat.color.set('#5B4030').multiplyScalar(bark.albedoGain);
+        mat.needsUpdate = true;
+      }
+    }
   }
 
   syncSky(skyState: TimeOfDayState, elapsed: number): void {

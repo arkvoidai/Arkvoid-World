@@ -149,12 +149,33 @@ export function createBrazierGlowDecal(
   geo.rotateX(-Math.PI / 2);
 
   const tint = colorType === 'orange' ? '#FF8C2A' : '#9D6CFF';
-  const mat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(tint),
+  const mat = new THREE.ShaderMaterial({
     transparent: true,
-    opacity: 0.35,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
+    uniforms: {
+      uColor: { value: new THREE.Color(tint) },
+      uOpacity: { value: 0.34 },
+    },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uColor;
+      uniform float uOpacity;
+      varying vec2 vUv;
+      void main() {
+        vec2 c = (vUv - 0.5) * 2.0;
+        float r2 = dot(c, c);
+        if (r2 > 1.0) discard;
+        float glow = pow(1.0 - r2, 2.2) * uOpacity;
+        gl_FragColor = vec4(uColor, glow);
+      }
+    `,
   });
 
   const mesh = new THREE.Mesh(geo, mat);

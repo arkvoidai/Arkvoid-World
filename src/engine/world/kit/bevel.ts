@@ -44,6 +44,30 @@ export function createBeveledBoxGeometry(
   }
 
   geo.computeVertexNormals();
+
+  // Compute metric box UVs (2.0 meters per tile) so large slabs/walls never stretch a single [0..1] tile into planks
+  const norm = geo.getAttribute('normal') as THREE.BufferAttribute;
+  const uvAttr = geo.getAttribute('uv') as THREE.BufferAttribute | undefined;
+  const invMeters = 1.0 / 2.0;
+  if (norm && uvAttr) {
+    for (let i = 0; i < pos.count; i++) {
+      const px = pos.getX(i);
+      const py = pos.getY(i);
+      const pz = pos.getZ(i);
+      const nx = Math.abs(norm.getX(i));
+      const ny = Math.abs(norm.getY(i));
+      const nz = Math.abs(norm.getZ(i));
+      if (ny >= nx && ny >= nz) {
+        uvAttr.setXY(i, px * invMeters, pz * invMeters);
+      } else if (nx >= ny && nx >= nz) {
+        uvAttr.setXY(i, pz * invMeters, py * invMeters);
+      } else {
+        uvAttr.setXY(i, px * invMeters, py * invMeters);
+      }
+    }
+    uvAttr.needsUpdate = true;
+  }
+
   return geo;
 }
 

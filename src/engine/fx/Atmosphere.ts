@@ -130,7 +130,10 @@ export class Atmosphere {
   private readonly dummy = new THREE.Object3D();
   private readonly upVec = new THREE.Vector3(0, 1, 0);
   private readonly beamDir = new THREE.Vector3(0.5, 0.6, -0.5);
-  private readonly beamQuat = new THREE.Quaternion();
+  private readonly beamRight = new THREE.Vector3(1, 0, 0);
+  private readonly beamFaceNorm = new THREE.Vector3(0, 0, 1);
+  private readonly toCam = new THREE.Vector3();
+  private readonly rotMat = new THREE.Matrix4();
 
   private lastSkySyncHour = -999;
 
@@ -175,17 +178,20 @@ export class Atmosphere {
       uniforms: {
         uTime: { value: 0 },
         uRayStrength: { value: 0.85 },
-        uRayColor: { value: new THREE.Color('#FFB070') },
+        uRayColor: { value: new THREE.Color('#FFB870') },
+        uCameraPos: { value: new THREE.Vector3() },
       },
       vertexShader: /* glsl */ `
         attribute float aBeamPhase;
         varying vec2 vUv;
         varying float vPhase;
+        varying vec3 vWorldPos;
 
         void main() {
           vUv = uv;
           vPhase = aBeamPhase;
           vec4 wp = modelMatrix * instanceMatrix * vec4(position, 1.0);
+          vWorldPos = wp.xyz;
           gl_Position = projectionMatrix * viewMatrix * wp;
         }
       `,
@@ -193,22 +199,27 @@ export class Atmosphere {
         uniform float uTime;
         uniform float uRayStrength;
         uniform vec3 uRayColor;
+        uniform vec3 uCameraPos;
 
         varying vec2 vUv;
         varying float vPhase;
+        varying vec3 vWorldPos;
 
         void main() {
           if (uRayStrength <= 0.005) discard;
 
-          // Smooth Gaussian-like alpha across width and along length (no center spine seam)
-          float across = sin(clamp(vUv.x, 0.0, 1.0) * 3.14159265);
-          float widthFalloff = pow(max(0.0, across), 3.0);
-          float lengthFalloff = smoothstep(0.0, 0.28, vUv.y) * smoothstep(1.0, 0.18, vUv.y);
+          // Smooth Gaussian falloff across width so beam never has a hard edge or center spine
+          float centeredX = (vUv.x - 0.5) * 2.0;
+          float widthFalloff = exp(-centeredX * centeredX * 3.8) * (1.0 - centeredX * centeredX);
+          if (widthFalloff <= 0.005) discard;
+
+          float lengthFalloff = smoothstep(0.0, 0.30, vUv.y) * smoothstep(1.0, 0.18, vUv.y);
+          float camDistFade = smoothstep(6.0, 16.0, length(vWorldPos - uCameraPos));
 
           // Slow breathing intensity
-          float breath = 0.78 + 0.22 * sin(uTime * 0.48 + vPhase);
+          float breath = 0.80 + 0.20 * sin(uTime * 0.45 + vPhase);
 
-          float alpha = widthFalloff * lengthFalloff * breath * uRayStrength * 0.16;
+          float alpha = widthFalloff * lengthFalloff * camDistFade * breath * uRayStrength * 0.095;
           gl_FragColor = vec4(uRayColor, alpha);
         }
       `,
@@ -422,7 +433,8 @@ export class Atmosphere {
 
           vec4 mvPosition = viewMatrix * vec4(worldPos, 1.0);
           gl_Position = projectionMatrix * mvPosition;
-          gl_PointSize = clamp(size * uPixelRatio * (74.0 / max(1.8, -mvPosition.z)), 1.5, 9.5);
+          // Strictly <= 3.6 px (never > 4 px)
+          gl_PointSize = clamp(size * min(uPixelRatio, 2.0) * (18.0 / max(3.0, -mvPosition.z)), 1.2, 3.6);
         }
       `,
       fragmentShader: /* glsl */ `
@@ -452,10 +464,10 @@ export class Atmosphere {
     this.group.add(this.motesPoints);
 
     // -------------------------------------------------------------------------
-    // 4. BLOSSOM PETALS (desktop 140, phone 50)
+    // 4. BLOSSOM PETALS (desktop 140, phone 50) — 5..7 cm soft notched petal SDF
     // -------------------------------------------------------------------------
     const petalCount = this.isPhone ? 50 : 140;
-    const petalGeo = new THREE.PlaneGeometry(0.18, 0.12);
+    const petalGeo = new THREE.PlaneGeometry(0.07, 0.05);
 
     this.petalsMat = new THREE.ShaderMaterial({
       transparent: true,
@@ -485,13 +497,14 @@ export class Atmosphere {
         varying vec3 vColor;
 
         void main() {
-          // Delicate oval blossom petal silhouette
+          // Delicate notched blossom petal silhouette with soft alpha edge
           vec2 p = (vUv - 0.5) * 2.0;
           p.x *= 0.85;
-          float d = length(p);
-          if (d > 1.0) discard;
-          float alpha = smoothstep(1.0, 0.55, d) * 0.92;
-          vec3 col = vColor * mix(vec3(0.85), uSunLight, 0.45);
+          float notch = 0.14 * exp(-p.x * p.x * 12.0) * max(0.0, p.y);
+          float d = length(vec2(p.x, p.y + notch));
+          if (d > 0.96) discard;
+          float alpha = smoothstep(0.96, 0.42, d) * 0.90;
+          vec3 col = vColor * mix(vec3(0.88), uSunLight, 0.42);
           gl_FragColor = vec4(col, alpha);
         }
       `,
@@ -683,29 +696,18 @@ export class Atmosphere {
     this.lastSkySyncHour = h;
 
 
-    // 1. Update God Ray strength, colour & beam orientation from sunDirection
+    // 1. Update God Ray strength, warm golden-orange colour & beam direction from sunDirection
     const rayStrength = computeGodRayStrength(skyState.sunDirection.y);
     this.godRayMat.uniforms.uRayStrength!.value = rayStrength;
     (this.godRayMat.uniforms.uRayColor!.value as THREE.Color)
-      .copy(skyState.horizon)
+      .set('#FFB870')
       .lerp(skyState.light, 0.45);
 
     this.beamDir.copy(skyState.sunDirection).normalize();
-    if (this.beamDir.y < 0.12) {
-      this.beamDir.y = 0.12;
+    if (this.beamDir.y < 0.16) {
+      this.beamDir.y = 0.16;
       this.beamDir.normalize();
     }
-    this.beamQuat.setFromUnitVectors(this.upVec, this.beamDir);
-
-    for (let i = 0; i < this.beamAnchors.length; i++) {
-      const b = this.beamAnchors[i]!;
-      this.dummy.position.set(b.x, b.y, b.z);
-      this.dummy.quaternion.copy(this.beamQuat);
-      this.dummy.scale.set(b.width, b.length, b.width);
-      this.dummy.updateMatrix();
-      this.godRayMesh.setMatrixAt(i, this.dummy.matrix);
-    }
-    this.godRayMesh.instanceMatrix.needsUpdate = true;
 
     // 2. Mist ribbons tinted by fog colour
     (this.mistRibbonMat.uniforms.uFogColor!.value as THREE.Color)
@@ -763,6 +765,9 @@ export class Atmosphere {
     const timeVal = reducedMotion ? 0 : elapsed;
 
     this.godRayMat.uniforms.uTime!.value = timeVal;
+    (this.godRayMat.uniforms.uCameraPos!.value as THREE.Vector3).copy(
+      camera.position,
+    );
     this.mistRibbonMat.uniforms.uTime!.value = timeVal;
     this.motesMat.uniforms.uTime!.value = timeVal;
     (this.motesMat.uniforms.uCameraPos!.value as THREE.Vector3).copy(
@@ -772,6 +777,25 @@ export class Atmosphere {
 
     this.syncSkyState(skyState, force);
     this.updatePetals(dt, elapsed, reducedMotion);
+
+    // Billboard GodRay planes around beamDir toward camera so they are never viewed edge-on as a vertical line (D9)
+    for (let i = 0; i < this.beamAnchors.length; i++) {
+      const b = this.beamAnchors[i]!;
+      this.dummy.position.set(b.x, b.y, b.z);
+      this.toCam.copy(camera.position).sub(this.dummy.position);
+      this.beamRight.crossVectors(this.beamDir, this.toCam);
+      if (this.beamRight.lengthSq() < 1e-4) {
+        this.beamRight.crossVectors(this.beamDir, this.upVec);
+      }
+      this.beamRight.normalize();
+      this.beamFaceNorm.crossVectors(this.beamRight, this.beamDir).normalize();
+      this.rotMat.makeBasis(this.beamRight, this.beamDir, this.beamFaceNorm);
+      this.dummy.quaternion.setFromRotationMatrix(this.rotMat);
+      this.dummy.scale.set(b.width, b.length, 1);
+      this.dummy.updateMatrix();
+      this.godRayMesh.setMatrixAt(i, this.dummy.matrix);
+    }
+    this.godRayMesh.instanceMatrix.needsUpdate = true;
 
     // Orient lantern glow haloes toward camera
     const camQuat = camera.quaternion;

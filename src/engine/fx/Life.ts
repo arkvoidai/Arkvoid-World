@@ -40,7 +40,7 @@ export class LifeSystem extends THREE.Group {
 
   public firefliesPoints: THREE.Points | null = null;
   public firefliesGeo: THREE.BufferGeometry | null = null;
-  public firefliesMat: THREE.PointsMaterial | null = null;
+  public firefliesMat: THREE.ShaderMaterial | null = null;
 
   public cranesMesh: THREE.InstancedMesh | null = null;
   public cranesMat: THREE.ShaderMaterial | null = null;
@@ -137,9 +137,11 @@ export class LifeSystem extends THREE.Group {
         uniform float uTime;
         attribute float aPhase;
         varying vec3 vColor;
+        varying vec2 vLocalXZ;
 
         void main() {
           vec3 p = position;
+          vLocalXZ = position.xz;
           // Wing flapping
           float flap = sin(uTime * 18.0 + aPhase);
           if (p.x < -0.001) {
@@ -152,10 +154,14 @@ export class LifeSystem extends THREE.Group {
 
           #ifdef USE_INSTANCING
             vec4 worldPos = instanceMatrix * vec4(p, 1.0);
-            #ifdef USE_COLOR
+            #ifdef USE_INSTANCING_COLOR
               vColor = instanceColor;
             #else
-              vColor = vec3(1.0);
+              #ifdef USE_COLOR
+                vColor = instanceColor;
+              #else
+                vColor = vec3(1.0);
+              #endif
             #endif
           #else
             vec4 worldPos = modelMatrix * vec4(p, 1.0);
@@ -168,14 +174,21 @@ export class LifeSystem extends THREE.Group {
       fragmentShader: /* glsl */ `
         uniform float uDayAlpha;
         varying vec3 vColor;
+        varying vec2 vLocalXZ;
 
         void main() {
           if (uDayAlpha <= 0.01) discard;
-          gl_FragColor = vec4(vColor, uDayAlpha * 0.95);
+          // Soft rounded butterfly wing alpha mask
+          vec2 w = vec2(abs(vLocalXZ.x) / 0.14, (vLocalXZ.y + 0.01) / 0.08);
+          float d = length(w);
+          if (d > 1.05) discard;
+          float alpha = smoothstep(1.05, 0.55, d) * uDayAlpha * 0.95;
+          gl_FragColor = vec4(vColor, alpha);
         }
       `,
       side: THREE.DoubleSide,
       transparent: true,
+      depthWrite: false,
     });
 
     const aPhase = new Float32Array(this.butterflyCount);
@@ -197,6 +210,7 @@ export class LifeSystem extends THREE.Group {
       new THREE.Color('#B9A6FF'), // purple
     ];
 
+    const dummy = new THREE.Object3D();
     for (let i = 0; i < this.butterflyCount; i++) {
       const col = colors[i % colors.length]!;
       this.butterfliesMesh.setColorAt(i, col);
@@ -215,7 +229,13 @@ export class LifeSystem extends THREE.Group {
         speed: 1.2 + (i % 4) * 0.3,
         phase: i * 0.75,
       });
+
+      dummy.position.set(cx, baseY, cz);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      this.butterfliesMesh.setMatrixAt(i, dummy.matrix);
     }
+    this.butterfliesMesh.instanceMatrix.needsUpdate = true;
 
     if (this.butterfliesMesh.instanceColor) {
       this.butterfliesMesh.instanceColor.needsUpdate = true;
@@ -259,12 +279,44 @@ export class LifeSystem extends THREE.Group {
     this.firefliesGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     this.firefliesGeo.setAttribute('phase', new THREE.BufferAttribute(phases, 1));
 
-    this.firefliesMat = new THREE.PointsMaterial({
-      size: 0.38,
-      map: getSoftGlowTexture(),
-      vertexColors: true,
+    this.firefliesMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uOpacity: { value: 0.0 },
+        uPixelRatio: { value: 1.5 },
+      },
+      vertexShader: /* glsl */ `
+        attribute vec3 color;
+        attribute float phase;
+        uniform float uTime;
+        uniform float uPixelRatio;
+        varying vec3 vColor;
+        varying float vPulse;
+
+        void main() {
+          vColor = color;
+          vPulse = 0.45 + 0.55 * sin(uTime * 2.4 + phase);
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+          // Strictly <= 3.6 px (never > 4 px)
+          gl_PointSize = clamp(2.6 * min(uPixelRatio, 2.0) * (16.0 / max(4.0, -mvPosition.z)), 1.2, 3.6);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform float uOpacity;
+        varying vec3 vColor;
+        varying float vPulse;
+
+        void main() {
+          if (uOpacity <= 0.01) discard;
+          vec2 c = (gl_PointCoord - 0.5) * 2.0;
+          float r2 = dot(c, c);
+          if (r2 > 1.0) discard;
+          float softDisc = exp(-r2 * 2.8) * (1.0 - r2);
+          gl_FragColor = vec4(vColor, softDisc * vPulse * uOpacity);
+        }
+      `,
       transparent: true,
-      opacity: 0.0, // Driven by dusk/night
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
@@ -303,9 +355,11 @@ export class LifeSystem extends THREE.Group {
       vertexShader: /* glsl */ `
         uniform float uTime;
         attribute float aFlapOffset;
+        varying vec2 vSpan;
 
         void main() {
           vec3 p = position;
+          vSpan = vec2(abs(p.x) / 2.2, abs(p.z) / 1.2);
           float flap = sin(uTime * 3.5 + aFlapOffset);
           if (abs(p.x) > 0.1) {
             p.y += flap * 0.45 * (abs(p.x) / 2.2);
@@ -315,11 +369,17 @@ export class LifeSystem extends THREE.Group {
         }
       `,
       fragmentShader: /* glsl */ `
+        varying vec2 vSpan;
         void main() {
-          gl_FragColor = vec4(0.96, 0.96, 0.98, 0.92);
+          float edge = max(vSpan.x, vSpan.y);
+          if (edge > 0.98) discard;
+          float alpha = smoothstep(0.98, 0.65, edge) * 0.92;
+          gl_FragColor = vec4(0.96, 0.95, 0.98, alpha);
         }
       `,
       side: THREE.DoubleSide,
+      transparent: true,
+      depthWrite: false,
     });
 
     const cFlap = new Float32Array(this.craneCount);
@@ -337,16 +397,24 @@ export class LifeSystem extends THREE.Group {
     this.swiftsMat = new THREE.ShaderMaterial({
       uniforms: { uTime: { value: 0 } },
       vertexShader: /* glsl */ `
+        varying vec3 vLocalPos;
         void main() {
+          vLocalPos = position;
           vec4 worldPos = instanceMatrix * vec4(position, 1.0);
           gl_Position = projectionMatrix * viewMatrix * worldPos;
         }
       `,
       fragmentShader: /* glsl */ `
+        varying vec3 vLocalPos;
         void main() {
-          gl_FragColor = vec4(0.24, 0.22, 0.28, 0.88);
+          float r = length(vLocalPos.xz) / 0.42;
+          if (r > 0.98) discard;
+          float alpha = smoothstep(0.98, 0.55, r) * 0.88;
+          gl_FragColor = vec4(0.24, 0.22, 0.28, alpha);
         }
       `,
+      transparent: true,
+      depthWrite: false,
     });
 
     this.swiftsMesh = new THREE.InstancedMesh(swiftGeo, this.swiftsMat, this.swiftCount);
@@ -484,6 +552,7 @@ export class LifeSystem extends THREE.Group {
       new THREE.Color('#D8CCFF'), // lavender
     ];
 
+    const dummy = new THREE.Object3D();
     for (let i = 0; i < this.wispCount; i++) {
       const col = wispColors[i % wispColors.length]!;
       this.wispsMesh.setColorAt(i, col);
@@ -503,7 +572,13 @@ export class LifeSystem extends THREE.Group {
         phase: i * 0.85,
         color: col,
       });
+
+      dummy.position.set(cx, baseY, cz);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      this.wispsMesh.setMatrixAt(i, dummy.matrix);
     }
+    this.wispsMesh.instanceMatrix.needsUpdate = true;
 
     if (this.wispsMesh.instanceColor) {
       this.wispsMesh.instanceColor.needsUpdate = true;
@@ -545,7 +620,8 @@ export class LifeSystem extends THREE.Group {
 
     // 2. Fireflies
     if (this.firefliesMat && this.firefliesGeo) {
-      this.firefliesMat.opacity = nightAlpha * 0.88;
+      this.firefliesMat.uniforms.uTime!.value = elapsed;
+      this.firefliesMat.uniforms.uOpacity!.value = nightAlpha * 0.88;
 
       if (nightAlpha > 0.01) {
         const pos = this.firefliesGeo.attributes.position!;

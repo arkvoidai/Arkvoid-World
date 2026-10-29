@@ -59,10 +59,10 @@ export function createBellTowerGroup(
     clearcoat: 0.4,
     clearcoatRoughness: 0.25,
   });
-  const bronzeMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color('#4D6256'),
+  const bronzeMat = materials.getMaterial('stone', {
+    tint: '#4D6256',
     metalness: 0.85,
-    roughness: 0.35,
+    roughnessScale: 0.42,
   });
 
   const baseGeo = createBeveledBoxGeometry(3.6, 0.32, 3.6, 0.03);
@@ -112,9 +112,9 @@ export function createBellTowerGroup(
   beamMesh.castShadow = true;
   group.add(beamMesh);
 
-  // 3. Small hip roof
+  // 3. Small hip roof seated directly on the columns and tie beams
   const roofGeo = createHipAndGableRoofGeometry(4.2, 4.2, 0.8, 1.6, 0.45, 0.15, 18, 18);
-  roofGeo.translate(0, 0.32 + colHeight + 0.1, 0);
+  roofGeo.translate(0, 0.32 + colHeight - 0.04, 0);
   const roofMesh = new THREE.Mesh(roofGeo, roofMat);
   roofMesh.castShadow = true;
   group.add(roofMesh);
@@ -141,15 +141,14 @@ export function createCeremonialDrumGroup(
   group.name = 'CeremonialDrum';
 
   const timberMat = materials.getMaterial('timber', { tint: '#5B3F2B' });
-  const goldMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color('#D9A441'),
+  const goldMat = materials.getMaterial('stone', {
+    tint: '#D9A441',
     metalness: 0.95,
-    roughness: 0.28,
+    roughnessScale: 0.35,
   });
-  const drumSkinMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color('#E8DFCE'),
-    roughness: 0.75,
-    metalness: 0.02,
+  const drumSkinMat = materials.getMaterial('plaster', {
+    tint: '#E8DFCE',
+    roughnessScale: 0.85,
   });
 
   // Trestle legs
@@ -303,15 +302,14 @@ export function createFlutteringBannerMesh(
   colorType: 'orange' | 'purple' = 'orange',
   length = 3.6,
   width = 0.85,
+  materials?: MaterialLibrary,
 ): { bannerMesh: THREE.Mesh; poleMesh: THREE.Mesh } {
   // Tall lacquer pole with gold cap
   const poleGeo = createBeveledBoxGeometry(0.10, length + 2.5, 0.10, 0.015);
   poleGeo.translate(0, (length + 2.5) * 0.5, 0);
-  const poleMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color('#3A1812'),
-    roughness: 0.35,
-    metalness: 0.1,
-  });
+  const poleMat = materials
+    ? materials.getMaterial('timber', { tint: '#3A1812', roughnessScale: 0.5 })
+    : new THREE.MeshBasicMaterial({ color: new THREE.Color('#3A1812') });
   const poleMesh = new THREE.Mesh(poleGeo, poleMat);
   poleMesh.castShadow = true;
 
@@ -366,6 +364,7 @@ export function createFlutteringBannerMesh(
   });
 
   const bannerMesh = new THREE.Mesh(clothGeo, bannerMat);
+  bannerMesh.name = `FlutteringBanner_${colorType}`;
   bannerMesh.position.set(0.05, length + 2.1, 0);
   bannerMesh.castShadow = true;
 
@@ -375,7 +374,9 @@ export function createFlutteringBannerMesh(
 /**
  * Creates bronze tripod incense burner with rising soft smoke particle column.
  */
-export function createIncenseBurnerGroup(): { group: THREE.Group; smokePoints: THREE.Points } {
+export function createIncenseBurnerGroup(
+  materials?: MaterialLibrary,
+): { group: THREE.Group; smokePoints: THREE.Points } {
   const group = new THREE.Group();
   group.name = 'IncenseBurner';
 
@@ -405,34 +406,58 @@ export function createIncenseBurnerGroup(): { group: THREE.Group; smokePoints: T
   const merged = mergeGeometries(parts, false);
   for (const p of parts) p.dispose();
 
-  const censerMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color('#3E4F44'),
-    metalness: 0.88,
-    roughness: 0.38,
-  });
+  const censerMat = materials
+    ? materials.getMaterial('stone', {
+        tint: '#3E4F44',
+        metalness: 0.85,
+        roughnessScale: 0.45,
+      })
+    : new THREE.MeshBasicMaterial({ color: new THREE.Color('#3E4F44') });
   const censerMesh = new THREE.Mesh(merged, censerMat);
+  censerMesh.name = 'IncenseCenserBody';
   censerMesh.castShadow = true;
   group.add(censerMesh);
 
-  // Rising smoke particle column
+  // Rising smoke particle column (soft Gaussian points strictly <= 3.4 px)
   const smokeCount = 48;
   const smokePositions = new Float32Array(smokeCount * 3);
   for (let i = 0; i < smokeCount; i++) {
     const t = i / smokeCount;
-    smokePositions[i * 3] = (Math.random() - 0.5) * 0.15;
+    smokePositions[i * 3] = ((i * 0.618) % 1 - 0.5) * 0.14;
     smokePositions[i * 3 + 1] = 0.9 + t * 2.8;
-    smokePositions[i * 3 + 2] = (Math.random() - 0.5) * 0.15;
+    smokePositions[i * 3 + 2] = ((i * 0.382) % 1 - 0.5) * 0.14;
   }
   const smokeGeo = new THREE.BufferGeometry();
   smokeGeo.setAttribute('position', new THREE.BufferAttribute(smokePositions, 3));
 
-  const smokeMat = new THREE.PointsMaterial({
-    color: new THREE.Color('#D8CFDE'),
-    size: 0.22,
+  const smokeMat = new THREE.ShaderMaterial({
     transparent: true,
-    opacity: 0.32,
     depthWrite: false,
     blending: THREE.NormalBlending,
+    uniforms: {
+      uColor: { value: new THREE.Color('#D8CFDE') },
+    },
+    vertexShader: /* glsl */ `
+      varying float vHeightAlpha;
+      void main() {
+        float h = clamp((position.y - 0.9) / 2.8, 0.0, 1.0);
+        vHeightAlpha = smoothstep(0.0, 0.18, h) * smoothstep(1.0, 0.35, h) * 0.34;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_Position = projectionMatrix * mvPosition;
+        gl_PointSize = clamp(18.0 / max(4.5, -mvPosition.z), 1.4, 3.4);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uColor;
+      varying float vHeightAlpha;
+      void main() {
+        vec2 c = (gl_PointCoord - 0.5) * 2.0;
+        float r2 = dot(c, c);
+        if (r2 > 1.0) discard;
+        float soft = exp(-r2 * 2.5) * (1.0 - r2);
+        gl_FragColor = vec4(uColor, soft * vHeightAlpha);
+      }
+    `,
   });
   const smokePoints = new THREE.Points(smokeGeo, smokeMat);
   smokePoints.name = 'IncenseSmoke';
@@ -443,38 +468,61 @@ export function createIncenseBurnerGroup(): { group: THREE.Group; smokePoints: T
 
 /**
  * Creates training circle inlay geometry:
- * Paved ring with 8 radial sectarian compass lines.
+ * Paved ring with 8 radial sectarian compass lines merged into a single ground inlay mesh.
  */
 export function createTrainingCircleGroup(): THREE.Group {
   const group = new THREE.Group();
   group.name = 'TrainingCircle';
 
-  const ringMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color('#D9A441'),
-    transparent: true,
-    opacity: 0.75,
-    depthWrite: false,
-  });
-
+  const parts: THREE.BufferGeometry[] = [];
   const rings = [2.2, 4.4, 6.2];
   for (const r of rings) {
     const ring = new THREE.RingGeometry(r - 0.035, r + 0.035, 48);
     ring.rotateX(-Math.PI / 2);
-    const m = new THREE.Mesh(ring, ringMat);
-    m.position.y = 0.02;
-    group.add(m);
+    ring.translate(0, 0.02, 0);
+    parts.push(ring);
   }
 
-  // 8 trigram-like sector lines
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2;
-    const line = new THREE.PlaneGeometry(0.05, 5.8);
+    const line = new THREE.PlaneGeometry(0.05, 6.2);
     line.rotateX(-Math.PI / 2);
     line.rotateY(a);
-    const m = new THREE.Mesh(line, ringMat);
-    m.position.set(Math.sin(a) * 3.1, 0.02, Math.cos(a) * 3.1);
-    group.add(m);
+    line.translate(Math.sin(a) * 3.1, 0.02, Math.cos(a) * 3.1);
+    parts.push(line);
   }
+
+  const merged = mergeGeometries(parts, false);
+  for (const p of parts) p.dispose();
+
+  const ringMat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: {
+      uColor: { value: new THREE.Color('#D9A441') },
+    },
+    vertexShader: /* glsl */ `
+      varying vec3 vLocalPos;
+      void main() {
+        vLocalPos = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uColor;
+      varying vec3 vLocalPos;
+      void main() {
+        float r = length(vLocalPos.xz) / 6.35;
+        if (r > 1.0) discard;
+        float alpha = smoothstep(1.0, 0.92, r) * 0.72;
+        gl_FragColor = vec4(uColor, alpha);
+      }
+    `,
+  });
+
+  const mesh = new THREE.Mesh(merged, ringMat);
+  mesh.name = 'TrainingCircleInlay';
+  group.add(mesh);
 
   return group;
 }

@@ -232,6 +232,10 @@ export class LightRig {
   private lastEnvRegenElapsed = -999;
   private smoothedExposure = 1.0;
 
+  private readonly pointLights: THREE.PointLight[] = [];
+  private readonly lightAnchors: Array<{ pos: THREE.Vector3; color: THREE.Color }> = [];
+  private lastPointLightUpdateElapsed = -999;
+
   constructor(
     renderer: THREE.WebGLRenderer,
     scene: THREE.Scene,
@@ -272,6 +276,31 @@ export class LightRig {
     this.hemiLight.position.set(0, 80, 0);
 
     scene.add(this.keyLight, this.keyLight.target, this.fillLight, this.hemiLight);
+
+    // 3b. Pool of 4 shadowless PointLights (2 on phone) for warm lantern & brazier pools
+    const pointLightCount = device.deviceClass === 'phone' ? 2 : 4;
+    for (const l of LANTERN_PLACEMENTS) {
+      this.lightAnchors.push({
+        pos: new THREE.Vector3(l.x, l.y + 2.1, l.z),
+        color: new THREE.Color('#FFA24A'),
+      });
+    }
+    // Stair & Hall braziers
+    this.lightAnchors.push(
+      { pos: new THREE.Vector3(1.68, 1.4, -2.15), color: new THREE.Color('#FF8C2A') },
+      { pos: new THREE.Vector3(1.68, 1.4, -9.85), color: new THREE.Color('#9D6CFF') },
+      { pos: new THREE.Vector3(8.38, 7.6, -9.0), color: new THREE.Color('#FFA24A') },
+      { pos: new THREE.Vector3(8.38, 7.6, -3.0), color: new THREE.Color('#FFA24A') },
+    );
+
+    for (let i = 0; i < pointLightCount; i++) {
+      const pl = new THREE.PointLight('#FFA24A', 0.0, 9.0, 2.0);
+      pl.castShadow = false;
+      const anchor = this.lightAnchors[i % this.lightAnchors.length]!;
+      pl.position.copy(anchor.pos);
+      this.pointLights.push(pl);
+      scene.add(pl);
+    }
 
     // 4. Shadow Configuration
     if (this.shadowTier === 'desktop-high' && camera) {
@@ -552,6 +581,30 @@ export class LightRig {
     }
     renderer.toneMappingExposure = this.smoothedExposure;
 
+    // Reassign PointLight pool every 0.5 s to the nearest lantern/brazier anchors
+    if (force || elapsedSec - this.lastPointLightUpdateElapsed >= 0.5) {
+      this.lastPointLightUpdateElapsed = elapsedSec;
+      const h = skyState.hour;
+      const isDay = h >= 8.5 && h <= 16.2;
+      const baseIntensity = isDay ? 0.35 : 1.85;
+
+      // Sort anchors by squared distance to cameraTarget
+      const sorted = [...this.lightAnchors].sort(
+        (a, b) => a.pos.distanceToSquared(cameraTarget) - b.pos.distanceToSquared(cameraTarget),
+      );
+      for (let i = 0; i < this.pointLights.length; i++) {
+        const pl = this.pointLights[i]!;
+        const anchor = sorted[i];
+        if (anchor) {
+          pl.position.copy(anchor.pos);
+          pl.color.copy(anchor.color);
+          const dist = anchor.pos.distanceTo(cameraTarget);
+          const fade = Math.max(0, 1 - Math.max(0, dist - 22) / 18);
+          pl.intensity = baseIntensity * fade;
+        }
+      }
+    }
+
     // PMREM environment update
     const elapsedSinceRegen = elapsedSec - this.lastEnvRegenElapsed;
     if (
@@ -602,5 +655,10 @@ export class LightRig {
 
     this.hemiLight.removeFromParent();
     this.hemiLight.dispose();
+
+    for (const pl of this.pointLights) {
+      pl.removeFromParent();
+      pl.dispose();
+    }
   }
 }

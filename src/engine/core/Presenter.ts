@@ -2,6 +2,7 @@ import type { Camera, Scene, WebGLRenderer } from 'three';
 import { Composer, type ExposureProbeStats } from '@/engine/core/Composer';
 import type { TimeOfDayState } from '@/engine/world/sky';
 import type { DeviceProfile } from '@/lib/deviceProfile';
+import type { QualityPreset } from '@/engine/core/Quality';
 
 export interface Disposable {
   dispose(): void;
@@ -12,7 +13,9 @@ export interface Presenter extends Disposable {
   attach(host: HTMLElement, renderer: WebGLRenderer): void;
   setSize(width: number, height: number, dpr: number): void;
   render(scene: Scene, camera: Camera): void;
-  updateSky?(skyState: TimeOfDayState, elapsed: number): void;
+  updateSky?(skyState: TimeOfDayState, elapsed: number, camera?: Camera): void;
+  applyQuality?(preset: QualityPreset): void;
+  getComposer?(): Composer | null;
   setPostProcessingEnabled?(enabled: boolean): void;
   isPostProcessingEnabled?(): boolean;
   setProbeEnabled?(enabled: boolean): void;
@@ -70,6 +73,14 @@ export class ScreenPresenter implements Presenter {
     }
   }
 
+  getComposer(): Composer | null {
+    return this.composer;
+  }
+
+  applyQuality(preset: QualityPreset): void {
+    this.composer?.applyQuality(preset);
+  }
+
   setProbeEnabled(enabled: boolean): void {
     this.probeEnabled = enabled;
     this.composer?.setProbeEnabled(enabled);
@@ -101,8 +112,8 @@ export class ScreenPresenter implements Presenter {
     }
   }
 
-  updateSky(skyState: TimeOfDayState, elapsed: number): void {
-    this.composer?.update(skyState, elapsed);
+  updateSky(skyState: TimeOfDayState, elapsed: number, camera?: Camera): void {
+    this.composer?.update(skyState, elapsed, camera);
   }
 
   render(scene: Scene, camera: Camera): void {

@@ -25,6 +25,13 @@ export interface TextureSlotMaps {
   setKey: string;
   mapsFound: string[];
   thumbnailUrl?: string;
+  meanLuminance: number;
+  postGainLuminance: number;
+  meanHueDeg: number;
+  meanSaturation: number;
+  stripeRatio: number;
+  isSuspicious: boolean;
+  suspicionReason?: string;
 }
 
 export interface AssetSlotReport {
@@ -42,6 +49,13 @@ export interface AssetSlotReport {
   isReal: boolean;
   nominalRoughness: number;
   uvScaleMeters: number;
+  meanLuminance: number;
+  postGainLuminance: number;
+  meanHueDeg: number;
+  meanSaturation: number;
+  stripeRatio: number;
+  isSuspicious: boolean;
+  suspicionReason?: string;
 }
 
 export interface AssetStoreReport {
@@ -198,6 +212,12 @@ export class AssetStore {
         setKey: 'procedural_fallback',
         mapsFound: ['diff', 'nor', 'arm'],
         thumbnailUrl: undefined,
+        meanLuminance: TEXTURE_TUNING[id].targetMeanLuminance,
+        postGainLuminance: TEXTURE_TUNING[id].targetMeanLuminance,
+        meanHueDeg: id === 'grass' || id === 'moss' ? 105 : 34,
+        meanSaturation: 0.22,
+        stripeRatio: 1.0,
+        isSuspicious: false,
       });
     }
   }
@@ -498,10 +518,21 @@ export class AssetStore {
         return;
       }
 
-      // Compute mean luminance & albedo gain on a 32x32 downsample
-      const { meanLuminance, thumbDataUrl } = this.computeLuminanceAndThumb(diffDecoded);
+      // Compute mean luminance, hue, stripe ratio & albedo gain on a 32x32 downsample
+      const stats = this.computeLuminanceAndThumb(diffDecoded);
+      const meanLuminance = stats.meanLuminance;
+      const thumbDataUrl = stats.thumbDataUrl;
       const targetMean = TEXTURE_TUNING[slotId].targetMeanLuminance;
-      const uAlbedoGain = Math.min(1.6, Math.max(0.6, targetMean / (meanLuminance || 0.01)));
+      const maxGain = slotId === 'plaster' ? 1.85 : 1.6;
+      const uAlbedoGain = Math.min(maxGain, Math.max(0.6, targetMean / (meanLuminance || 0.01)));
+      const postGainLuminance = Math.min(1.0, meanLuminance * uAlbedoGain);
+      const { isSuspicious, reason } = this.evaluateSuspicion(
+        slotId,
+        stats.meanHueDeg,
+        stats.meanSaturation,
+        stats.stripeRatio,
+        postGainLuminance,
+      );
 
       const diffTex = new THREE.Texture(diffDecoded);
       diffTex.wrapS = THREE.RepeatWrapping;
@@ -597,6 +628,13 @@ export class AssetStore {
       slotState.fileSizeBytes = diffFile.fileSizeBytes + (norFile?.fileSizeBytes || 0);
       slotState.bytesEstimate = totalBytes;
       slotState.thumbnailUrl = thumbDataUrl;
+      slotState.meanLuminance = meanLuminance;
+      slotState.postGainLuminance = postGainLuminance;
+      slotState.meanHueDeg = stats.meanHueDeg;
+      slotState.meanSaturation = stats.meanSaturation;
+      slotState.stripeRatio = stats.stripeRatio;
+      slotState.isSuspicious = isSuspicious;
+      slotState.suspicionReason = reason;
 
       // Start 400 ms crossfade
       this.crossfadeTransitions.set(slotId, {
@@ -646,11 +684,51 @@ export class AssetStore {
     }
   }
 
+  private evaluateSuspicion(
+    slotId: TextureSlotId,
+    meanHueDeg: number,
+    meanSat: number,
+    stripeRatio: number,
+    postGainLum: number,
+  ): { isSuspicious: boolean; reason?: string } {
+    if (
+      (slotId === 'path' || slotId === 'stone') &&
+      meanHueDeg >= 15 &&
+      meanHueDeg <= 42 &&
+      meanSat > 0.35 &&
+      stripeRatio > 1.85
+    ) {
+      return {
+        isSuspicious: true,
+        reason: `${slotId} has wood-like orange-brown hue (${meanHueDeg.toFixed(0)}deg) and high horizontal stripe ratio (${stripeRatio.toFixed(2)})`,
+      };
+    }
+    if ((slotId === 'bark' || slotId === 'timber') && meanHueDeg >= 75 && meanHueDeg <= 165 && meanSat > 0.20) {
+      return {
+        isSuspicious: true,
+        reason: `${slotId} has green mean hue (${meanHueDeg.toFixed(0)}deg)`,
+      };
+    }
+    if (slotId === 'plaster' && postGainLum < 0.6) {
+      return {
+        isSuspicious: true,
+        reason: `plaster post-gain luminance (${postGainLum.toFixed(2)}) is under 0.60`,
+      };
+    }
+    return { isSuspicious: false };
+  }
+
   private computeLuminanceAndThumb(
     img: ImageBitmap | HTMLImageElement,
-  ): { meanLuminance: number; thumbDataUrl?: string } {
+  ): {
+    meanLuminance: number;
+    meanHueDeg: number;
+    meanSaturation: number;
+    stripeRatio: number;
+    thumbDataUrl?: string;
+  } {
     if (typeof document === 'undefined') {
-      return { meanLuminance: 0.5 };
+      return { meanLuminance: 0.5, meanHueDeg: 35, meanSaturation: 0.15, stripeRatio: 1.0 };
     }
 
     try {
@@ -658,21 +736,64 @@ export class AssetStore {
       canvas.width = 32;
       canvas.height = 32;
       const ctx = canvas.getContext('2d');
-      if (!ctx) return { meanLuminance: 0.5 };
+      if (!ctx) {
+        return { meanLuminance: 0.5, meanHueDeg: 35, meanSaturation: 0.15, stripeRatio: 1.0 };
+      }
 
       ctx.drawImage(img, 0, 0, 32, 32);
       const data = ctx.getImageData(0, 0, 32, 32).data;
 
       let sumLum = 0;
+      let sumR = 0;
+      let sumG = 0;
+      let sumB = 0;
       const pixelCount = 32 * 32;
+      const lums = new Float32Array(pixelCount);
+
       for (let i = 0; i < pixelCount; i++) {
         const p = i * 4;
         const r = data[p]! / 255.0;
         const g = data[p + 1]! / 255.0;
         const b = data[p + 2]! / 255.0;
         const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        lums[i] = lum;
         sumLum += lum;
+        sumR += r;
+        sumG += g;
+        sumB += b;
       }
+
+      const mR = sumR / pixelCount;
+      const mG = sumG / pixelCount;
+      const mB = sumB / pixelCount;
+      const maxC = Math.max(mR, mG, mB);
+      const minC = Math.min(mR, mG, mB);
+      const delta = maxC - minC;
+      let hue = 0;
+      if (delta > 1e-4) {
+        if (maxC === mR) {
+          hue = ((mG - mB) / delta) % 6;
+        } else if (maxC === mG) {
+          hue = (mB - mR) / delta + 2;
+        } else {
+          hue = (mR - mG) / delta + 4;
+        }
+        hue *= 60;
+        if (hue < 0) hue += 360;
+      }
+      const sat = maxC > 1e-4 ? delta / maxC : 0;
+
+      // Compute horizontal vs vertical gradient energy to detect plank-like striping
+      let diffAcrossRows = 0;
+      let diffAlongRows = 0;
+      for (let y = 0; y < 31; y++) {
+        for (let x = 0; x < 31; x++) {
+          const c = lums[y * 32 + x]!;
+          diffAlongRows += Math.abs(lums[y * 32 + (x + 1)]! - c);
+          diffAcrossRows += Math.abs(lums[(y + 1) * 32 + x]! - c);
+        }
+      }
+      const stripeRatio = diffAcrossRows / Math.max(0.001, diffAlongRows);
 
       // Generate 64px thumbnail
       const thumbCanvas = document.createElement('canvas');
@@ -687,10 +808,13 @@ export class AssetStore {
 
       return {
         meanLuminance: sumLum / pixelCount,
+        meanHueDeg: hue,
+        meanSaturation: sat,
+        stripeRatio,
         thumbDataUrl,
       };
     } catch {
-      return { meanLuminance: 0.5 };
+      return { meanLuminance: 0.5, meanHueDeg: 35, meanSaturation: 0.15, stripeRatio: 1.0 };
     }
   }
 
@@ -860,6 +984,13 @@ export class AssetStore {
         isReal: slot.isReal,
         nominalRoughness: tuning.nominalRoughness,
         uvScaleMeters: tuning.uvScaleMeters,
+        meanLuminance: Number(slot.meanLuminance.toFixed(3)),
+        postGainLuminance: Number(slot.postGainLuminance.toFixed(3)),
+        meanHueDeg: Number(slot.meanHueDeg.toFixed(1)),
+        meanSaturation: Number(slot.meanSaturation.toFixed(2)),
+        stripeRatio: Number(slot.stripeRatio.toFixed(2)),
+        isSuspicious: slot.isSuspicious,
+        suspicionReason: slot.suspicionReason,
       });
 
       totalBytes += slot.bytesEstimate;

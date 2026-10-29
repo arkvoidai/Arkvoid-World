@@ -105,17 +105,68 @@
     - Upgraded `src/engine/world/collision.ts` to test against both obstacle cylinders and oriented 2D/3D boxes with sliding push-out.
     - Added `hall-door` to `SpotId` and verified all named spots are on walkable ground.
     - Collision verification script `scripts/checkCollision.ts` verifies seamless climb up the 14 grand stairs (rise <= 0.16m < 0.4m MAX_STEP_UP), entry through the doorway into the hall interior, wall push-out against the south wall, circling the pond, and bridge crossing.
-  - Verified performance budgets: total sect architecture triangles ~65,000 (well within <= 140K budget); draw calls for architecture <= 32 (within <= 40 budget); unit test suite (34/34 PASS).
-  - Next step: Step 10 (Player Controls, Camera, and Interaction).
+- Step 10 (Cinematic Finish, Quality Tiers, and Performance):
+    - Four Quality Presets (`src/engine/core/Quality.ts`):
+      - Ultra (Desktop-high): DPR cap 2.0, MSAA 4, CSM 3 cascades x 2048, GTAO, half-res bloom (strength 0.35, threshold 1.0), screen-space sun shafts (24 samples), film grain (0.012), 120K grass blades, full leaf cards, 1024/2048 textures, 4 cloud march steps, PMREM refresh 45s, particles 1.0.
+      - Balanced (Desktop-mid & high-end phones): DPR cap 1.75 (phone 1.5), MSAA 4 (phone 2), 1 shadow map (2048 desktop, 1024 phone), quarter-res bloom (strength 0.20 desktop only), geometry sun beams, 70K grass (phone 28K), 70% leaf cards, 2 cloud march steps, PMREM refresh 60s, particles 0.70.
+      - Performance (Mid phones): DPR cap 1.25, render scale 0.8 (0.7–0.9), MSAA 2 or 0, no real shadows (AO decals and blob shadows only), glow sprites (no bloom), 14K grass, 40% leaf cards, 512 textures, 0 cloud march steps, particles 0.40.
+      - Lite (Low-end/SW): scale 0.65, no grass (0), 0% leaf cards (proxies only), 256 procedural textures, 0 cloud march steps, particles 0.10.
+      - Runtime dynamic switching via `applyQuality(preset)` without rebuilding scenes.
+      - Auto starting tier resolved from `deviceProfile`; user preference persisted in `localStorage["arkvoid.quality"]` (`'auto'`, `'cinematic'`, `'performance'`).
+    - Composite Pass Finalisation (`src/engine/core/Composer.ts`):
+      - Linear HDR pipeline: Scene (MSAA HalfFloat) -> optional GTAO -> Bloom (threshold 1.0 on HDR buffer) -> Screen-space Sun Shafts (quarter-res 24-sample radial march) -> Additive lens flare sprites -> Breathing exposure oscillation (±2% over 20s) -> AgX Tone Mapping -> Split-tone (#5B49C9 / #FF9B4A) & S-curve contrast -> Vignette, film grain, and dither -> sRGB output.
+      - Dynamic pass switches (`setEnabled`) with lazy render target allocation that resize with canvas and free memory when disabled.
+    - Camera Rails (`src/engine/core/CameraRail.ts`):
+      - Spline camera system with keyframes `{position, lookAt, fov, time, ease}` and gentle 0.3% handheld drift.
+      - Predefined rails: `"arrival"` (9s descent from clouds to spawn/hall), `"orbit"` (30s idle loop), `"bridge-cross"` (12s bridge glide).
+      - Previewable via dev query parameter `?rail=arrival|orbit|bridge-cross`.
+    - Performance Governor (`src/engine/core/QualityGovernor.ts`):
+      - 1 Hz evaluation of p50 and p95 over last 120 frames (ignoring 5s warmup after load/resize/refocus).
+      - Refresh rate estimation over first 90 frames; target = 1000 / min(refresh, 60).
+      - 7-step degrade sequence when p95 > 1.35x target for 3 consecutive seconds (at most one change per 2s); 12s/20s reverse upgrade sequence.
+      - Session locking after 3 downgrades within 90s; emergency jump to step 4 on 3 frames > 250ms within 5s.
+      - SaveData and low-battery (<= 20%) toast warning suggesting Performance mode.
+    - Benchmark & Memory Tools:
+      - `?bench=1`: 60-second camera rail loop through main vistas (plaza, hall interior, bridge, pond, waterfall) displaying results card with device profile, p50, p95, worst frame, fps, load time, GPU memory, PASS/FAIL verification (budget <= 25ms desktop, <= 40ms phone), and "Copy results" JSON button.
+      - `?leak=1`: 10-cycle mount/render/dispose verification confirming zero leaked textures/geometries.
+      - `scripts/check-budget.mjs` (`npm run check:budget`): verifies gzipped dist chunk sizes against limits (entry JS <= 200 KB, world chunk <= 850 KB; adjusted world budget from 650 KB to 850 KB gzipped to accommodate expanded Sect architecture, procedural materials, and composite passes).
+    - Visual Review Mode v3 (`?shots=1`):
+      - 22 viewpoints (12 curated vistas + 10 D1–D10 defect verification shots) across hours 6.5, 9.5, 12, 16.5, 18.3, and 23.
+      - Full-resolution "Save image" PNG export button.
+    - `docs/VISUALS.md`: Short, factual rendering laws, quality tier matrix, pass costs, sky table, and review shot list.
+  - **Build Step 11 · Visual Repair and Hero Look**:
+    - Automated Scene Audit Tool (`src/engine/world/SceneAudit.ts`, `?audit=1`, `window.__ARKVOID_AUDIT__`):
+      - Runs on load, after texture decode (1.5 s), and every 10 s in dev builds; renders plain-text PASS/FAIL overlay across 6 categories: `trees`, `instancing`, `floatingParts`, `materials`, `sky`, and `exposureProbe`.
+    - D1 & D2 Repair (`src/engine/world/Trees.ts`):
+      - Curved S-bend Catmull-Rom trunks (`baseR = 0.036 * H`, `1.6x` root flare) and tapering curved branches (`<= 0.50x` parent radius).
+      - Synchronous `512x512` 2x2 multi-leaf cluster atlas with alpha coverage verification; `108..154` crossed leaf cards per tree on desktop (`66..77` phone) with spherical clump normals (`72%`) and species colour gradients.
+      - Strict placement validator: `slopeDeg <= 25`, `islandT <= 0.85`, `>= 2.25 m` from paths/buildings/pond, and strictly above island rim height.
+    - D3, D4, D9, D10 Repair (`SkyDome.ts`, `CloudSea.ts`, `Atmosphere.ts`, `Life.ts`, `Spires.ts`):
+      - Cloud-plane intersection projection (`uv = d.xz / max(d.y, 0.04) * 0.32`) with domain-warped FBM, feathered edges, 2-step sun light march, and `SkyStars` `THREE.Points` clamped to `<= 3.2 px` with Gaussian discard.
+      - 5 stacked translucent `CloudSea` planes (`y = -22..-36`) with heightfield billow normals, valley AO, 35% fog cap, and horizon mist merge.
+      - All particle/point shaders (`SkyStars`, `AtmosphericMotes`, `Fireflies`, `IncenseSmoke`, `WaterfallSpray`) clamped to `<= 3.6 px` with radial discard; `BlossomPetals`, `fallingLeaves`, `Butterflies`, `CranesFlock`, and `SwiftsFlock` use soft silhouette alpha discard.
+      - `GodRays` billboard around the sun-beam axis toward the camera; `DistantSpires` use an elevation-aware aerial-perspective shader (`<= 0.88x` sky behind them) and no vertical sky waterfall strips.
+    - D5, D6, D7, D8, D11 Repair (`TextureCatalog.ts`, `bevel.ts`, `TerrainMaterial.ts`, `IslandMesh.ts`, `Rocks.ts`, `roofs.ts`, `SectArchitecture.ts`, `Composer.ts`, `sky.ts`):
+      - Bound `path_diff.jpg` to `path` slot, added metric box UVs (`2.0 m` tile scale) to `createBeveledBoxGeometry`, and added `HallTerraceStonePaving`.
+      - True world-space triplanar cliff/underside projection (`pow(abs(geomNormal), 4.0)`) with horizontal strata and upward-ledge moss.
+      - Oriented `createHipAndGableRoofGeometry` ridge along Z when `depth > width`, seated `HallRidgeCapOrnament` on `HallRoofTier2`, and seated `HallLatticeWindowNorth/South/East` flush (`+1.5 cm`) with plaster walls.
+      - Sculpted 12x10 underside rock spikes rooted in clusters and smooth organic multi-frequency boulder displacement.
+      - Reduced shadow split-tone purple shift to `<= 0.05`, raised saturation (`1.18`) and vibrance (`0.22`), added `uAmbientFloor` (`0.22` plaster, `0.14` other slots), and brightened `DUSK` and `NIGHT` hemisphere/key lighting.
 
 ## Decisions
+- World chunk budget adjusted from 650 KB to 850 KB gzipped in `scripts/check-budget.mjs` and `docs/STATE.md` to support full Sect architecture, dougong brackets, procedural PBR texture generation, and multi-pass HDR post-processing; current production world chunk is ~224 KB gzipped, well inside the 850 KB limit.
+- Screen-space sun shafts execute a 24-sample radial blur on a quarter-resolution HalfFloat target, evaluating only when the sun is above the horizon and within the camera's forward field of view, weighting intensity strongest during dawn (5.2–8.0h) and dusk (16.5–19.5h).
+- Bloom threshold is clamped to 1.0 in linear HDR space, ensuring only un-tonemapped high-energy light sources (sun disc, glowing lanterns, incense braziers, spirit flames) bloom without causing flat surfaces or porcelain cliffs to glow artificially.
+- Procedural lens glare on desktop uses 3 additive gaussian discs along the screen-space vector between sun center and viewport center with soft golden and lavender tints, avoiding heavy dirty lens textures or chromatic aberration per Visual Law.
+- Performance Governor prevents oscillation by enforcing a 20-second cooldown between upgrades, requiring 12 consecutive seconds of p95 < 0.7x target, and permanently locking the session tier if 3 downgrades occur within 90 seconds.
+
 - Terrain visuals and analytic collision share `terrain.ts` as single deterministic source of truth: `terrainHeight(x, z)` determines vertex elevation in `IslandMesh.ts` as well as player height and obstacles in `collision.ts` (`heightAt` / `resolveMove`).
 - Stair transition on the south side of the Hall Terrace uses 7 flat treads with step heights <= 0.35 m; player slope check permits steps when `targetY - curY <= MAX_STEP_UP` (0.4 m), letting the player ascend stairs while blocking cliffs > 40 degrees.
 - Arched bridge abutments level the terrain lip roll-off so players transition between bridge deck and island surface without drops or slope collisions.
 - Procedural canvas fallbacks generate rich 512 px tileable noise patterns with Sobel-derived normals and ARM maps, enabling immediate first-frame rendering and graceful degradation when storage bucket assets are not yet uploaded.
 - Terrain shaders compute normal blending analytically via screen-space derivatives (`dFdx` / `dFdy`) without tangent buffer attributes, minimizing vertex buffer size and draw overhead.
-- Biplanar projection on steep cliffs (world normal Y < 0.78) eliminates UV texture stretching on vertical rock faces with two texture fetches instead of three.
-- Distant spires are batched into 3 merged draw calls (rock bodies, summit foliage crowns, and waterfalls), maintaining high visual depth and scale with minimal GPU overhead.
+- Triplanar projection on steep cliffs (world normal Y < 0.75) eliminates UV texture stretching on vertical rock faces across both X and Z cliff orientations.
+- Distant spires are batched into 2 merged draw calls (rock bodies and summit foliage crowns) with an elevation-aware aerial-perspective shader (`<= 0.88x` sky behind them), maintaining high visual depth and scale with minimal GPU overhead.
 - New World Colour Law strictly caps surface albedos to 0.80 (sRGB `#E6E0D2`) so bright sunlight never blows highlights; warmth and glow are produced primarily by the directional key light, fill light, atmospheric scattering, and composite split-toning.
 - The Composer composite pass encapsulates AgX filmic tone mapping, split-toning, S-curve contrast, vibrance, warm vignette, dither, and film grain in a single post-render fullscreen quad, executing tone mapping and color grading strictly in linear space prior to sRGB output.
 - Three.js r174 defines `AgXToneMapping` in default shader chunks; custom shader functions and matrices in `Composer.ts` are prefixed with `ark` / `ARK_` to avoid namespace collisions during WebGL program linkage.
@@ -125,11 +176,12 @@
 - `DesignKitScreen` is loaded via `React.lazy(() => import('@/screens/DesignKitScreen'))` guarded by `import.meta.env.DEV || import.meta.env.VITE_ENABLE_KIT === '1'` so production builds exclude the dev kit chunk unless explicitly enabled.
 - `WorldLabel` reads screen-space coordinates and distance from a `MutableRefObject<WorldLabelScreenPoint>` inside `requestAnimationFrame` and writes `transform: translate3d(...)` and `opacity` directly to the DOM element ref, avoiding React re-renders per frame while automatically repelling/fading if a point approaches within `68 px` of the Orb centre.
 - In Three.js r186, rendering any PBR `MeshStandardMaterial` lazily allocates a module-level `DFG_LUT` `DataTexture` (`m_uniforms.dfgLUT.value`) inside `renderer.properties`. `Engine.dispose()` explicitly disposes `dfgLUT` from material properties prior to `renderer.dispose()` so `renderer.info.memory.textures` returns cleanly to `0` across repeated mount/unmount cycles (`?leak=1`).
-- Both `CloudSea` FBM planes (`y = -22` and `y = -34`) apply a radial alpha and horizon-mist fade (`smoothstep(260.0, 580.0, dist)`) so the square `1400 x 1400` geometry boundary never creates a visible seam against the `SkyDome`.
+- All 5 `CloudSea` FBM planes (`y = -22..-36`) apply a radial alpha and horizon-mist fade (`smoothstep(560.0, 880.0, dist)`) so the geometry boundary never creates a visible seam against the `SkyDome`.
 - `src/engine/world/layout.ts` exports shared mathematical functions `islandRadiusAtAngle()` and `islandSurfaceUndulation()` used by both `IslandMesh.ts` and `collision.ts`, guaranteeing zero discrepancy between visual ground/rim geometry and analytic collision (`heightAt` / `resolveMove`).
-- Static architectural geometry is merged per material via `BufferGeometryUtils.mergeGeometries` and repeated elements (lantern posts, blossom trees, stalactites, mist skirts, bridge posts, AO decals, god rays, mist ribbons, blossom petals, lantern haloes) use `InstancedMesh` or a single `THREE.Points` draw call, keeping the entire multi-island scene with full Step 5 atmosphere at `38–55` draw calls (`<= 100` phone / `<= 150` desktop budget) and `0` leaked geometries/textures across 10 full engine cycles (`?leak=1`).
+- Static architectural geometry is merged per material via `BufferGeometryUtils.mergeGeometries` and repeated elements (lantern posts, blossom trees, rock spikes, mist skirts, bridge posts, AO decals, god rays, mist ribbons, blossom petals, lantern haloes) use `InstancedMesh` or a single `THREE.Points` draw call, keeping the entire multi-island scene within draw-call budgets (`<= 100` phone / `<= 150` desktop budget) and `0` leaked geometries/textures across 10 full engine cycles (`?leak=1`).
 - The instanced AO contact decals in `LightRig.ts` use a cached `128 x 128` radial gradient texture with a soft violet-grey centre (`rgba(62, 54, 88, 0.30)`) feathering to `0` alpha at the circle border under `NormalBlending`, avoiding WebGL `MultiplyBlending` premultiplied-alpha artifacts while grounding pavilions, trees, and lanterns across all device tiers.
 
 ## Known issues
 - PNG icon binaries (`icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon-180.png`) under `public/icons/` must be supplied by the founder as documented in `public/icons/README.md`; `public/icons/favicon.svg` is active now.
+
 

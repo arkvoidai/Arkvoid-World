@@ -113,12 +113,11 @@ export function createSectArchitecture(
     vertexColors: true,
   });
 
-  const goldMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color('#D9A441'),
+  const goldMat = materials.getMaterial('stone', {
+    tint: '#D9A441',
     metalness: 0.95,
-    roughness: 0.28,
+    roughnessScale: 0.32,
   });
-  disposables.push(goldMat);
 
   const latticeTexture = getLatticeWindowTexture();
   const latticeMat = new THREE.MeshStandardMaterial({
@@ -127,7 +126,7 @@ export function createSectArchitecture(
     side: THREE.DoubleSide,
     roughness: 0.5,
     emissive: new THREE.Color('#FF9640'),
-    emissiveIntensity: 0.45,
+    emissiveIntensity: 0.55,
   });
   disposables.push(latticeMat);
 
@@ -139,13 +138,12 @@ export function createSectArchitecture(
   });
   disposables.push(windowGlowMat);
 
-  const paperLanternMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color('#FF8C2A'),
-    emissive: new THREE.Color('#FFA65C'),
-    emissiveIntensity: 0.85,
-    roughness: 0.6,
+  const paperLanternMat = materials.getMaterial('plaster', {
+    tint: '#FF8C2A',
+    roughnessScale: 0.7,
   });
-  disposables.push(paperLanternMat);
+  paperLanternMat.emissive.set('#FFA65C');
+  paperLanternMat.emissiveIntensity = 0.85;
 
   // Dynamic sky updater for emissives
   dynamicUpdaters.push((_, sky) => {
@@ -189,13 +187,21 @@ export function createSectArchitecture(
   const terraceD = 27.0; // width along Z (from z = -19.5 to 7.5)
   const terraceH = 2.2;
 
-  // Ashlar stone terrace base
+  // Ashlar stone terrace base + paved stone top walking deck (fixes D5 plank appearance)
   const terraceBaseGeo = createAshlarTerraceBaseGeometry(terraceW, terraceD, terraceH, 0.22);
   terraceBaseGeo.translate(terraceX, 0, terraceZ);
   const terraceBaseMesh = new THREE.Mesh(terraceBaseGeo, stoneMat);
+  terraceBaseMesh.name = 'HallTerraceAshlarBase';
   terraceBaseMesh.castShadow = true;
   terraceBaseMesh.receiveShadow = true;
   rootGroup.add(terraceBaseMesh);
+
+  const terracePavingGeo = createBeveledBoxGeometry(terraceW - 0.16, 0.06, terraceD - 0.16, 0.015);
+  terracePavingGeo.translate(terraceX, terraceH + 0.01, terraceZ);
+  const terracePavingMesh = new THREE.Mesh(terracePavingGeo, pathMat);
+  terracePavingMesh.name = 'HallTerraceStonePaving';
+  terracePavingMesh.receiveShadow = true;
+  rootGroup.add(terracePavingMesh);
 
   // Walkable terrace platform (starts at x = 6.84 at top of stairs)
   platforms.push({
@@ -490,22 +496,42 @@ export function createSectArchitecture(
     },
   );
 
-  // Lattice windows along walls with warm glowing backplanes
-  const windowMeshNorth = new THREE.Mesh(
-    new THREE.PlaneGeometry(hallDepthX * 0.7, 1.8),
-    latticeMat,
-  );
-  windowMeshNorth.rotateY(Math.PI / 2);
-  windowMeshNorth.position.set(hallX, terraceH + 2.4, northWallZ + 0.16);
+  // Lattice windows flush against the North, South, and Back walls (fixes D7 hovering rotated window)
+  const winW = hallDepthX * 0.62;
+  const winH = 1.85;
+  const winY = terraceH + 2.55;
+
+  // North wall lattice window (flush on northWall at z = northWallZ, rotation.y = 0)
+  const windowMeshNorth = new THREE.Mesh(new THREE.PlaneGeometry(winW, winH), latticeMat);
+  windowMeshNorth.name = 'HallLatticeWindowNorth';
+  windowMeshNorth.position.set(hallX, winY, northWallZ + 0.155);
   rootGroup.add(windowMeshNorth);
 
-  const windowMeshSouth = new THREE.Mesh(
-    new THREE.PlaneGeometry(hallDepthX * 0.7, 1.8),
-    latticeMat,
-  );
-  windowMeshSouth.rotateY(-Math.PI / 2);
-  windowMeshSouth.position.set(hallX, terraceH + 2.4, southWallZ - 0.16);
+  // South wall lattice window (flush on southWall at z = southWallZ, rotation.y = 0)
+  const windowMeshSouth = new THREE.Mesh(new THREE.PlaneGeometry(winW, winH), latticeMat);
+  windowMeshSouth.name = 'HallLatticeWindowSouth';
+  windowMeshSouth.position.set(hallX, winY, southWallZ - 0.155);
   rootGroup.add(windowMeshSouth);
+
+  // Back wall central lattice window (flush on backWall at x = backWallX, rotation.y = -Math.PI / 2)
+  const windowMeshEast = new THREE.Mesh(new THREE.PlaneGeometry(hallWidthZ * 0.45, winH), latticeMat);
+  windowMeshEast.name = 'HallLatticeWindowEast';
+  windowMeshEast.rotateY(-Math.PI / 2);
+  windowMeshEast.position.set(backWallX - 0.155, winY, hallZ);
+  rootGroup.add(windowMeshEast);
+
+  // Timber window frames around North, South, and East lattice windows (merged into beamGeoList)
+  const nFrame = createBeveledBoxGeometry(winW + 0.24, winH + 0.24, 0.32, 0.02);
+  nFrame.translate(hallX, winY, northWallZ);
+  beamGeoList.push(nFrame);
+
+  const sFrame = createBeveledBoxGeometry(winW + 0.24, winH + 0.24, 0.32, 0.02);
+  sFrame.translate(hallX, winY, southWallZ);
+  beamGeoList.push(sFrame);
+
+  const eFrame = createBeveledBoxGeometry(0.32, winH + 0.24, hallWidthZ * 0.45 + 0.24, 0.02);
+  eFrame.translate(backWallX, winY, hallZ);
+  beamGeoList.push(eFrame);
 
   // Interior Altar-like stone dais at the back of the hall
   const daisX = 20.0;
@@ -563,11 +589,17 @@ export function createSectArchitecture(
     });
   }
 
-  // Hanging banners in the hall
+  // Hanging banners in the hall (suspended directly from the interior tie beam at x = 8.5 + 2 * colSpanX)
+  const bannerBeamX = 8.5 + 2 * colSpanX;
   for (const dir of [-1, 1]) {
     const bz = daisZ + dir * 2.2;
-    const { bannerMesh } = createFlutteringBannerMesh(dir > 0 ? 'orange' : 'purple', 3.2, 0.7);
-    bannerMesh.position.set(daisX - 1.2, terraceH + colH - 0.2, bz);
+    const { bannerMesh } = createFlutteringBannerMesh(
+      dir > 0 ? 'orange' : 'purple',
+      3.2,
+      0.7,
+      materials,
+    );
+    bannerMesh.position.set(bannerBeamX - 0.35, beamY + 0.04, bz);
     disposables.push(bannerMesh.material as THREE.Material);
     dynamicUpdaters.push((t) => {
       const bMat = bannerMesh.material as THREE.ShaderMaterial;
@@ -577,7 +609,7 @@ export function createSectArchitecture(
   }
 
   // DOUBLE-TIER ROOF FOR MAIN HALL
-  // Tier 1: Lower penthouse roof tier
+  // Tier 1: Lower penthouse roof tier (seated on perimeter columns & tie beams)
   const roofTier1Geo = createHipAndGableRoofGeometry(
     hallDepthX + 2.0,
     hallWidthZ + 2.0,
@@ -590,6 +622,7 @@ export function createSectArchitecture(
   );
   roofTier1Geo.translate(hallX, terraceH + colH * 0.65, hallZ);
   const roofTier1Mesh = new THREE.Mesh(roofTier1Geo, roofMat);
+  roofTier1Mesh.name = 'HallRoofTier1';
   roofTier1Mesh.castShadow = true;
   rootGroup.add(roofTier1Mesh);
 
@@ -604,16 +637,18 @@ export function createSectArchitecture(
     24,
     36,
   );
-  roofTier2Geo.translate(hallX, terraceH + colH + 0.5, hallZ);
+  roofTier2Geo.translate(hallX, terraceH + colH + 0.25, hallZ);
   const roofTier2Mesh = new THREE.Mesh(roofTier2Geo, roofMat);
+  roofTier2Mesh.name = 'HallRoofTier2';
   roofTier2Mesh.castShadow = true;
   rootGroup.add(roofTier2Mesh);
 
-  // Ridge cap with ornamental chiwei finials on upper roof
-  const ridgeCapGeo = createRidgeCapGeometry(hallWidthZ * 0.7, 0.18);
+  // Ridge cap with ornamental chiwei finials seated directly along the Z-axis ridge of Tier 2 roof (fixes D7)
+  const ridgeCapGeo = createRidgeCapGeometry(11.6, 0.18);
   ridgeCapGeo.rotateY(Math.PI / 2);
-  ridgeCapGeo.translate(hallX, terraceH + colH + 0.5 + 3.82, hallZ);
+  ridgeCapGeo.translate(hallX, terraceH + colH + 0.25 + 3.74, hallZ);
   const ridgeMesh = new THREE.Mesh(ridgeCapGeo, goldMat);
+  ridgeMesh.name = 'HallRidgeCapOrnament';
   ridgeMesh.castShadow = true;
   rootGroup.add(ridgeMesh);
 
@@ -664,14 +699,15 @@ export function createSectArchitecture(
 
   rootGroup.add(plinthsMesh, columnsMesh, beamsMesh, bracketsMesh, goldMesh);
 
-  // Hanging paper lanterns under front colonnade eaves
+  // Hanging paper lanterns under front colonnade eaves (seated on front tie beam at x = frontWallX)
   for (let i = 0; i < 4; i++) {
     const lz = hallZ - hallWidthZ * 0.38 + i * (hallWidthZ * 0.25);
-    const lx = frontWallX - 0.45;
+    const lx = frontWallX - 0.12;
+    const ly = beamY - 0.15;
     const { paper, timber: lTim, gold: lGld } = createHangingPaperLanternGeometry(0.55, 0.22);
-    paper.translate(lx, terraceH + colH - 0.45, lz);
-    lTim.translate(lx, terraceH + colH - 0.45, lz);
-    lGld.translate(lx, terraceH + colH - 0.45, lz);
+    paper.translate(lx, ly, lz);
+    lTim.translate(lx, ly, lz);
+    lGld.translate(lx, ly, lz);
 
     const pMesh = new THREE.Mesh(paper, paperLanternMat);
     const tMesh = new THREE.Mesh(lTim, timberMat);
@@ -822,21 +858,21 @@ export function createSectArchitecture(
     radius: pondR + 0.2,
   });
 
-  // Short zigzag stone bridge to islet
+  // Short zigzag stone bridge to islet (connected from pond ring wall at x = -5.4 to islet at x = -8.8)
   const zigZags: THREE.BufferGeometry[] = [];
   const zzPts = [
-    { x: -5.6, y: 0.18, z: -4.0 },
+    { x: -5.35, y: 0.18, z: -4.0 },
     { x: -7.0, y: 0.16, z: -4.8 },
-    { x: -8.4, y: 0.14, z: -4.0 },
+    { x: -8.6, y: 0.14, z: -4.0 },
   ];
   for (let i = 0; i < zzPts.length - 1; i++) {
     const p0 = zzPts[i]!;
     const p1 = zzPts[i + 1]!;
     const zLen = Math.hypot(p1.x - p0.x, p1.z - p0.z);
     const zYaw = Math.atan2(p1.x - p0.x, p1.z - p0.z);
-    const slab = createBeveledBoxGeometry(1.2, 0.18, zLen + 0.08, 0.02);
+    const slab = createBeveledBoxGeometry(1.2, 0.24, zLen + 0.12, 0.02);
     slab.rotateY(zYaw);
-    slab.translate((p0.x + p1.x) * 0.5, (p0.y + p1.y) * 0.5, (p0.z + p1.z) * 0.5);
+    slab.translate((p0.x + p1.x) * 0.5, (p0.y + p1.y) * 0.5 - 0.04, (p0.z + p1.z) * 0.5);
     zigZags.push(slab);
 
     platforms.push({
@@ -917,7 +953,7 @@ export function createSectArchitecture(
   });
 
   // Incense burner at (0, 0, 5.5) with rising smoke
-  const { group: incenseGroup, smokePoints } = createIncenseBurnerGroup();
+  const { group: incenseGroup, smokePoints } = createIncenseBurnerGroup(materials);
   incenseGroup.position.set(0, 0, 5.5);
   rootGroup.add(incenseGroup);
   dynamicUpdaters.push((t) => {
@@ -1016,14 +1052,35 @@ export function createSectArchitecture(
   rootGroup.add(new THREE.Mesh(mergedGatePlinths, stoneMat));
   rootGroup.add(new THREE.Mesh(mergedGateCols, lacquerMat));
 
-  // Luminous vertical light veil between gate columns
-  const veilGeo = new THREE.PlaneGeometry(gateSpan - 0.4, gateColH - 0.4);
-  veilGeo.translate(0, (gateColH - 0.4) * 0.5 + 0.32, -21);
-  const veilMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color('#FFB27A'),
+  // Luminous vertical light veil between gate columns (spans gx = -2.1 .. +2.1 so it touches both gate columns)
+  const veilGeo = new THREE.PlaneGeometry(gateSpan, gateColH - 0.2);
+  veilGeo.translate(0, (gateColH - 0.2) * 0.5 + 0.32, -21);
+  const veilMat = new THREE.ShaderMaterial({
     transparent: true,
-    opacity: 0.65,
+    depthWrite: false,
     side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+      uColor: { value: new THREE.Color('#FFB27A') },
+    },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uColor;
+      varying vec2 vUv;
+      void main() {
+        float edgeX = smoothstep(0.0, 0.12, vUv.x) * smoothstep(1.0, 0.88, vUv.x);
+        float edgeY = smoothstep(0.0, 0.10, vUv.y) * smoothstep(1.0, 0.90, vUv.y);
+        float alpha = edgeX * edgeY * 0.55;
+        if (alpha <= 0.01) discard;
+        gl_FragColor = vec4(uColor, alpha);
+      }
+    `,
   });
   disposables.push(veilMat);
   rootGroup.add(new THREE.Mesh(veilGeo, veilMat));
@@ -1065,14 +1122,14 @@ export function createSectArchitecture(
     floorY: 0.35,
   });
 
-  // Storey 1 columns & roof
+  // Storey 1 & 2 columns supporting both archive roofs
   const archCols: THREE.BufferGeometry[] = [];
   const archColH = 3.6;
   for (const dx of [-archW * 0.45, archW * 0.45]) {
     for (const dz of [-archD * 0.45, archD * 0.45]) {
-      const c = createEntasisColumnGeometry(archColH, 0.20, 0.17, 1.06, 12);
-      c.translate(archX + dx, archY + 0.35, archZ + dz);
-      archCols.push(c);
+      const c1 = createEntasisColumnGeometry(archColH * 2 + 0.1, 0.20, 0.16, 1.06, 12);
+      c1.translate(archX + dx, archY + 0.35, archZ + dz);
+      archCols.push(c1);
       cylinders.push({
         id: `archive-col-${dx.toFixed(1)}-${dz.toFixed(1)}`,
         kind: 'column',
@@ -1090,8 +1147,8 @@ export function createSectArchitecture(
   archMidRoof.translate(archX, archY + 0.35 + archColH, archZ);
   rootGroup.add(new THREE.Mesh(archMidRoof, roofMat));
 
-  // Storey 2 upper pavilion
-  const archTopRoof = createHipAndGableRoofGeometry(archW * 0.8, archD * 0.8, 1.1, 1.8, 0.55, 0.16, 20, 14);
+  // Storey 2 upper pavilion roof seated on upper columns
+  const archTopRoof = createHipAndGableRoofGeometry(archW * 0.85, archD * 0.85, 1.1, 1.8, 0.55, 0.16, 20, 14);
   archTopRoof.translate(archX, archY + 0.35 + archColH * 2, archZ);
   rootGroup.add(new THREE.Mesh(archTopRoof, roofMat));
 
@@ -1107,10 +1164,23 @@ export function createSectArchitecture(
   const shrineZ = -52.0;
   const shrineW = 8.0;
   const shrineD = 6.0;
+  const shrineColH = 3.4;
 
   const shrineBaseGeo = createAshlarTerraceBaseGeometry(shrineW + 0.8, shrineD + 0.8, 0.35, 0.12);
   shrineBaseGeo.translate(shrineX, shrineY, shrineZ);
   rootGroup.add(new THREE.Mesh(shrineBaseGeo, stoneMat));
+
+  const shrineCols: THREE.BufferGeometry[] = [];
+  for (const dx of [-shrineW * 0.42, shrineW * 0.42]) {
+    for (const dz of [-shrineD * 0.42, shrineD * 0.42]) {
+      const sc = createEntasisColumnGeometry(shrineColH + 0.08, 0.18, 0.15, 1.06, 12);
+      sc.translate(shrineX + dx, shrineY + 0.35, shrineZ + dz);
+      shrineCols.push(sc);
+    }
+  }
+  const mergedShrineCols = mergeGeometries(shrineCols, false);
+  for (const p of shrineCols) p.dispose();
+  rootGroup.add(new THREE.Mesh(mergedShrineCols, lacquerMat));
 
   platforms.push({
     id: 'shrine-hall-base',
@@ -1123,7 +1193,7 @@ export function createSectArchitecture(
   });
 
   const shrineRoof = createHipAndGableRoofGeometry(shrineW, shrineD, 1.2, 2.2, 0.65, 0.16, 22, 16);
-  shrineRoof.translate(shrineX, shrineY + 0.35 + 3.4, shrineZ);
+  shrineRoof.translate(shrineX, shrineY + 0.35 + shrineColH, shrineZ);
   rootGroup.add(new THREE.Mesh(shrineRoof, roofMat));
 
   // Lookout platform at falls edge (33, 1, -64)

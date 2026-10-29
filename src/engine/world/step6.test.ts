@@ -163,8 +163,8 @@ test('Temporary render-scale governor steps down by 0.1 after 3s over budget dow
   assert.equal(r5.steppedDown, false);
 });
 
-test('Visual Review shots (10 curated shots) and 6 review hours', () => {
-  assert.equal(REVIEW_SHOTS.length, 10);
+test('Visual Review shots (12 curated + 10 D1-D10 verification shots) and 6 review hours', () => {
+  assert.equal(REVIEW_SHOTS.length, 22);
   assert.deepEqual([...REVIEW_HOURS], [6.5, 9.5, 12.0, 16.5, 18.3, 23.0]);
 
   setHourOverride(16.5);

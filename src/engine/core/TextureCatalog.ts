@@ -62,6 +62,7 @@ export const SLOT_KEYWORDS: Record<TextureSlotId, string[]> = {
   timber: ['wood', 'plank', 'planks', 'timber', 'wooden', 'board'],
   plaster: ['plaster', 'stucco', 'wall_plaster', 'painted', 'concrete_wall'],
   path: [
+    'path',
     'cobble',
     'cobblestone',
     'paving',

@@ -127,15 +127,17 @@ export class WaterSystem extends THREE.Group {
     floorGeo.rotateX(-Math.PI * 0.5);
     applyBoxUV(floorGeo, 2.5);
 
+    const [fallbackTex] = getRippleTextures();
     const pathSlot = this.assets?.getSlot('path');
     const floorMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color('#0D2934'),
-      map: pathSlot?.diff,
-      normalMap: pathSlot?.nor,
+      map: pathSlot?.diff ?? fallbackTex,
+      normalMap: pathSlot?.nor ?? fallbackTex,
       roughness: 0.9,
       metalness: 0.02,
     });
     this.pondFloorMesh = new THREE.Mesh(floorGeo, floorMat);
+    this.pondFloorMesh.name = 'SpiritPondFloor';
     this.pondFloorMesh.position.set(pondCenter.x, -1.05, pondCenter.z);
     this.add(this.pondFloorMesh);
 
@@ -252,14 +254,21 @@ export class WaterSystem extends THREE.Group {
     this.lotusGroup = new THREE.Group();
     this.lotusGroup.name = 'SpiritLotus';
 
+    const [fallbackTex] = getRippleTextures();
+    const mossSlot = this.assets?.getSlot('moss');
+    const plasterSlot = this.assets?.getSlot('plaster');
+
     const padMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color('#3A6E40'),
+      map: mossSlot?.diff ?? fallbackTex,
+      normalMap: mossSlot?.nor ?? fallbackTex,
       roughness: 0.65,
       metalness: 0.05,
     });
 
     this.lotusPetalMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color('#F7EDF5'),
+      map: plasterSlot?.diff ?? fallbackTex,
       emissive: new THREE.Color('#FF9B4A'),
       emissiveIntensity: 0.4,
       roughness: 0.4,
@@ -544,16 +553,36 @@ export class WaterSystem extends THREE.Group {
     this.sprayGeo.setAttribute('position', new THREE.BufferAttribute(sprayPos, 3));
     this.sprayGeo.setAttribute('velocity', new THREE.BufferAttribute(sprayVel, 3));
 
-    const sprayMat = new THREE.PointsMaterial({
-      color: new THREE.Color('#EBF3F8'),
-      size: this.isPhone ? 0.35 : 0.55,
+    const sprayMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uColor: { value: new THREE.Color('#EBF3F8') },
+        uPixelRatio: { value: 1.5 },
+      },
+      vertexShader: /* glsl */ `
+        uniform float uPixelRatio;
+        void main() {
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+          gl_PointSize = clamp(2.8 * min(uPixelRatio, 2.0) * (18.0 / max(4.0, -mvPosition.z)), 1.2, 3.6);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform vec3 uColor;
+        void main() {
+          vec2 c = (gl_PointCoord - 0.5) * 2.0;
+          float r2 = dot(c, c);
+          if (r2 > 1.0) discard;
+          float alpha = exp(-r2 * 2.6) * (1.0 - r2) * 0.55;
+          gl_FragColor = vec4(uColor, alpha);
+        }
+      `,
       transparent: true,
-      opacity: 0.55,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
 
     this.sprayParticles = new THREE.Points(this.sprayGeo, sprayMat);
+    this.sprayParticles.name = 'WaterfallSpray';
     this.add(this.sprayParticles);
   }
 
