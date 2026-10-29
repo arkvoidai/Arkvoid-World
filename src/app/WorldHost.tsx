@@ -22,8 +22,12 @@ import {
   resolveDeviceProfile,
 } from '@/lib/deviceProfile';
 import { hourNow } from '@/lib/worldClock';
-import { sharedEngineBridge } from '@/state/worldBridgeStore';
+import { sharedEngineBridge, useWorldBridgeStore } from '@/state/worldBridgeStore';
 import { Logo } from '@/ui/Logo';
+import { Pill } from '@/ui/Pill';
+import ActorsLineupOverlay from '@/hud/ActorsLineupOverlay';
+import type { FormId, LeaningId } from '@/engine/actors/WandererMaterials';
+import type { AnimationStateName } from '@/engine/actors/Animator';
 
 const VisualReviewOverlay =
   import.meta.env.DEV || import.meta.env.VITE_ENABLE_REVIEW === '1'
@@ -51,6 +55,9 @@ export interface WorldHostProps {
   reviewShots?: boolean;
   benchmark?: boolean;
   audit?: boolean;
+  actors?: boolean;
+  form?: string;
+  leaning?: string;
 }
 
 export default function WorldHost({
@@ -61,15 +68,20 @@ export default function WorldHost({
   reviewShots = false,
   benchmark = false,
   audit = false,
+  actors = false,
+  form,
+  leaning,
 }: WorldHostProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const vignetteRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<Engine | null>(null);
+  const showcaseRef = useRef<ShowcaseWorldSystem | null>(null);
   const [firstFrameReady, setFirstFrameReady] = useState(false);
   const [splashMounted, setSplashMounted] = useState(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [benchmarkReport, setBenchmarkReport] = useState<BenchmarkReport | null>(null);
   const [auditResult, setAuditResult] = useState<SceneAuditResult | null>(null);
+  const prompt = useWorldBridgeStore((s) => s.prompt);
 
   const syncVignetteOverlay = useCallback(() => {
     const el = vignetteRef.current;
@@ -114,6 +126,14 @@ export default function WorldHost({
     }
   }, [syncVignetteOverlay]);
 
+  const handleSelectActorAnimation = useCallback((anim: AnimationStateName) => {
+    showcaseRef.current?.getActorsLineup()?.setAnimation(anim);
+  }, []);
+
+  const handleToggleAutoCycle = useCallback((enabled: boolean) => {
+    showcaseRef.current?.getActorsLineup()?.setAutoCycle(enabled);
+  }, []);
+
   useEffect(() => {
     const hostEl = hostRef.current;
     if (!hostEl) return;
@@ -135,7 +155,19 @@ export default function WorldHost({
       activeEngine = engine;
       engineRef.current = engine;
 
-      const showcase = new ShowcaseWorldSystem(reviewShots);
+      const parsedForm = form !== undefined ? (parseInt(form, 10) as FormId) : undefined;
+      const parsedLeaning =
+        leaning === 'dawn' || leaning === 'dusk' || leaning === 'still'
+          ? (leaning as LeaningId)
+          : undefined;
+
+      const showcase = new ShowcaseWorldSystem({
+        reviewShots,
+        actorsLineup: actors,
+        playerForm: parsedForm,
+        playerLeaning: parsedLeaning,
+      });
+      showcaseRef.current = showcase;
 
       // Determine initial quality tier
       const pref = loadUserQualityPreference();
@@ -172,6 +204,13 @@ export default function WorldHost({
           if (audit) {
             performAudit();
           }
+        }
+      });
+
+      engine.events.on('toast', ({ message }) => {
+        if (!cancelled) {
+          setToastMessage(message);
+          window.setTimeout(() => setToastMessage(null), 4000);
         }
       });
 
@@ -253,7 +292,7 @@ export default function WorldHost({
       window.removeEventListener('pagehide', cleanupEngine);
       cleanupEngine();
     };
-  }, [audit, benchmark, leakTest, probe, reviewShots, syncVignetteOverlay]);
+  }, [actors, audit, benchmark, form, leaning, leakTest, probe, reviewShots, syncVignetteOverlay]);
 
   return (
     <main className="relative h-full w-full overflow-hidden bg-pearl select-none">
@@ -292,6 +331,20 @@ export default function WorldHost({
         </aside>
       )}
 
+      {/* Contextual Action Pill */}
+      {prompt && (
+        <div
+          data-testid="world-context-pill"
+          className="pointer-events-auto fixed bottom-8 left-1/2 -translate-x-1/2 z-overlay transition-all duration-150 animate-fade-in"
+        >
+          <Pill
+            label={prompt.label}
+            keycap={prompt.keycap}
+            onClick={() => sharedEngineBridge.enqueue({ type: 'triggerInteract' })}
+          />
+        </div>
+      )}
+
       {/* Benchmark results overlay (?bench=1) */}
       {benchmarkReport && (
         <BenchmarkOverlay
@@ -313,6 +366,14 @@ export default function WorldHost({
           {auditResult.lines.join('\n')}
         </pre>
       ) : null}
+
+      {actors && (
+        <ActorsLineupOverlay
+          onCaptureFrame={handleCaptureFrame}
+          onSelectAnimation={handleSelectActorAnimation}
+          onToggleAutoCycle={handleToggleAutoCycle}
+        />
+      )}
 
       {reviewShots && VisualReviewOverlay ? (
         <Suspense fallback={null}>

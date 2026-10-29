@@ -151,35 +151,98 @@
       - True world-space triplanar cliff/underside projection (`pow(abs(geomNormal), 4.0)`) with horizontal strata and upward-ledge moss.
       - Oriented `createHipAndGableRoofGeometry` ridge along Z when `depth > width`, seated `HallRidgeCapOrnament` on `HallRoofTier2`, and seated `HallLatticeWindowNorth/South/East` flush (`+1.5 cm`) with plaster walls.
       - Sculpted 12x10 underside rock spikes rooted in clusters and smooth organic multi-frequency boulder displacement.
-      - Reduced shadow split-tone purple shift to `<= 0.05`, raised saturation (`1.18`) and vibrance (`0.22`), added `uAmbientFloor` (`0.22` plaster, `0.14` other slots), and brightened `DUSK` and `NIGHT` hemisphere/key lighting.
+- **Step 12 · The Player Character**:
+  - Built `src/engine/actors/WandererMaterials.ts`:
+    - Full detail `MeshPhysicalMaterial` with silk sheen (sheen 0.6, sheen roughness 0.5, roughness 0.75, metalness 0.05) for Near LOD, and simplified `MeshStandardMaterial` for Mid LOD.
+    - Three Leaning palettes: Dawn (ivory/warm sand `#EAE3D2` with orange trim `#FF7A1A` and eye glow `#FF8A3D`), Dusk (deep indigo/lilac `#2C2B4B` with silver trim `#D0CEE2` and violet eye glow `#8B6CFF`), Still (soft white/stone grey `#F5F4F0` with gold trim `#D8A24A` and white eye glow `#FFFFFF`).
+    - Procedural embroidery canvas pattern with mountain and arc motifs + thread-relief normal map; procedural woven bamboo canvas for hats; soft semi-transparent gauze veil with alpha gradient; cached contact blob shadow decal; and concentric expanding gathering ring.
+  - Built `src/engine/actors/Animator.ts`:
+    - Pure procedural 60 Hz animation system with zero allocations in tick.
+    - Critically damped blends (0.15 s) across states: `idle` (0.2 Hz breathing, subtle weight shift, head drift), `walk` (stride 0.72 m, bob 2.5 cm, arm swing 15°, hips counter-rotation), `run` (stride 1.1 m, lean 9°, arm swing 35°, robe trail), `turn`, `stop` (settle with sway), `sit-meditate` (cross-legged on ground, upright spine, 0.12 Hz breath, eye glow pulsing), `bow` (1.6 s deep bow), `wave`, `talk` (head/hand gestures driven by speech level 0..1), and `gather` (arms rise palms up, eye glow brightens, footfall ring expands).
+    - Head & chest `look-at` heading clamped up to 55° (0.96 rad).
+    - Footstep phase events emitted on heel strikes with surface query (`grass`, `stone`, `wood`).
+  - Built `src/engine/actors/Wanderer.ts`:
+    - Articulated hierarchy of smooth `Object3D` parts: pelvis, 3-link spine, chest, neck, head, shoulders (0.42 m span), upper arms, forearms, hands, thighs, shins, feet (standard height 1.72 m; Warden 1.80 m; Sage 1.62 m).
+    - Continuous soft robe from shoulders to hem (lathe with 24 radial and 28 vertical segments) with custom vertex deformation shader driven by walking phase, speed amplitude, velocity trailing, spring hem lag, global wind vector, turn lean, and breathing. Hem radius >= 0.34 m (0.38 m), preventing clipping through legs.
+    - 3-segment spring chains on sleeves with motion lag and overshoot; belt sash with hanging ribbon strips; and eye marks (emissive additive, slow blinks, brightening during gather/talk).
+    - 4 Forms: 0 Traveller (bamboo hat, gauze veil, short cloak), 1 Scholar (deep hood, face veil, satchel), 2 Warden (mantle, topknot, half-mask), 3 Sage (high collar, hair bun with gold pin).
+    - 4 Residents presets: Elder Hale (white beard, staff), Archivist Ione (glasses, scroll case), Keeper Tamsin (lantern pole), Junior Corvin (practice sword).
+    - Scaled contact blob shadow under feet and shadow casting/receiving enabled.
+  - Built `src/engine/actors/WandererPool.ts`:
+    - Proximity-based LOD manager: Near (< 14 m, full detail, sheen, springs), Mid (14..40 m, simplified robe 12x14, no springs), Far (40..90 m, silhouette with vertex sway), culled beyond 90 m.
+    - Strictly enforces Near budget: max 8 Near wanderers on desktop, 4 on phone. Reuses instances.
+  - Built `src/engine/actors/PlayerState.ts`:
+    - Local player controller at `SPAWN` `(0, 0, 14)` facing `-z` at terrain height.
+    - Movement, acceleration, facing lerp, and analytic collision (`resolveMove` / `heightAt`).
+    - Pushes player position into `WindSystem` (`uPushPoints[0]`), bending grass dynamically via `GrassSystem`.
+  - Built Dev Lineup Stage (`?actors=1`) & Controls:
+    - 3D plaza lineup (`ActorsLineup.ts`) showing all 4 forms and 3 leanings side-by-side + 4 residents (16 wanderers) cycling through animations.
+    - HUD overlay (`ActorsLineupOverlay.tsx`) with time-of-day switcher, animation buttons, and "Save image" PNG snapshot export.
+    - URL parameter overrides: `?form=0..3` and `?leaning=dawn|dusk|still`.
+    - Live actor stats (`ACTORS {count} ({near} NEAR) · {frameMs}MS`) in `?debug=1`.
+  - Comprehensive unit test suite in `src/engine/actors/step12.test.ts` (6 tests covering hierarchy, lathe hem radius, PBR sheen materials, animator states, resident variants, pool LOD budgets, and player controller).
+- **Step 13 · Movement, Camera, Collision and First Interactions**:
+  - Built `src/engine/locomotion/Input.ts`:
+    - Unified normalized `InputState` (`moveX`, `moveY`, `lookDeltaYaw`, `lookDeltaPitch`, `run`, `interact`, `cancel`).
+    - Dynamic touch joystick in lower-left 50% with outer ring (112 px), knob (48 px), travel (56 px), deadzone (0.12), and response curve $x^{1.4}$.
+    - Drag-to-look in right 50% with resolution scaling (`0.0045 rad/px`). Run threshold at 85% joystick displacement with soft haptic tick.
+    - System gesture protection: touches starting within 20 px of screen edges are ignored.
+    - Keyboard (WASD/arrows, Shift run, E/Enter interact, Esc cancel), Mouse (pointer lock / drag), and Gamepad (left stick, right stick, A, B, RT run).
+    - Clear state on blur and pointercancel; zero allocations in tick.
+  - Built `src/engine/locomotion/PlayerController.ts`:
+    - Physical capsule: radius 0.3 m, height 1.7 m.
+    - Speeds & kinematics: walk 2.3 m/s, run 4.8 m/s, acceleration 12 m/s², deceleration 16 m/s².
+    - Critically damped turn towards camera-relative movement direction (0.12 s damping).
+    - Smooth step-up and step-down transitions up to 0.35 m (< 0.4 m MAX_STEP_UP limit) across the 14 grand stairs and platforms.
+    - Slope sliding: slopes > 30° smoothly reduce speed; slopes > 40° block uphill progression and project movement along contour.
+    - Island boundary soft damping: approaching mist rim ($t \ge 0.93$) slows movement; throttled once-per-minute edge warning toast ("The mist is too thick to go further.").
+    - State machine: `idle`, `walk`, `run`, `talk`, `sit`, `gather`, `transition`, driving procedural `Wanderer` actor and grass trampling push points.
+    - Snapshot API returning non-allocating cached snapshot.
+  - Built `src/engine/locomotion/CameraRig.ts`:
+    - Third-person spring arm: +1.35 m chest target, 3.4 m distance on desktop / 3.8 m on phone, 0.35 m shoulder offset on desktop / 0 on phone.
+    - Pitch clamped strictly between -30° (-0.52 rad) and +55° (+0.96 rad).
+    - 8-point analytic collision check along the spring arm testing terrain height (+0.35 m clearance), cylinder obstacles (+0.25 m padding), and building wall boxes (+0.25 m padding). Instantly pulls arm inward, then relaxes outward smoothly.
+    - Automatic hall interior closer arm (2.2 m distance, 1.15 m target height, 0 shoulder offset).
+    - Running FOV expansion: +3° (from 58° to 61°).
+    - Auto-recentring behind player when moving without look input for 2 s. Idle 0.4 cm vertical breathing drift.
+    - Showcase orbit handoff: 1.2 s smooth blend from initial showcase orbit into third-person camera on user interaction.
+    - Push/pop camera shot stack for cinematic camera overrides (e.g. sit-and-watch shot).
+  - Built `src/engine/locomotion/Interactables.ts`:
+    - 10 Hz candidate scoring evaluating distance (<= radius) and view dot product (> 0.2 or dist < 1.2 m) with hysteresis bonus (+0.25).
+    - Synchronizes prompt to `sharedEngineBridge.mutable.prompt` for contextual HUD action `Pill`.
+    - Real interactions:
+      - "Ring the bell": turns player to face bell, triggers arm wave gesture, sets bell swing velocity on physical 3D bell mesh (damped harmonic oscillator pendulum physics), gentle camera nudge, emits bell event.
+      - "Sit and watch": interactive spots at Spirit Pond edge and Pavilion bench, sits cross-legged in `sit-meditate` pose, pushes low calm camera shot (`sit-shot`), stands up on movement input or cancel/Escape.
+      - "Pass through the gate": camera nudge, toast "The path ahead is sealed."
+  - Contextual HUD Integration:
+    - `<Pill>` rendered dynamically in `src/app/WorldHost.tsx` when an interactable is in range; clicking triggers interaction via bridge queue.
+    - Floating toast notifications rendered for edge warning and sealed gate interactions.
+  - Extended Automated Collision Regression (`scripts/checkCollision.ts`):
+    - Plaza loop walking (32 steps around center radius 5m).
+    - Grand stone stair walking verifying step rise <= 0.35 m < 0.4 m.
+    - Walk into hall interior and back out onto terrace.
+    - Walk around Spirit Pond (40 steps).
+    - Crossing both bridges (Bridge A->B to 'still-garden' and Bridge B->C to 'falls-of-light').
+    - Stream stepping stone traverse.
+    - Obstacle collision against wall, tree trunk (radial clearance), and island rim.
+    - Slope sliding along 35° slope and uphill blocking at 40° slope.
+  - Synthetic Walk Tester (`?walk=1`):
+    - 30-second automated navigation circuit across Island A waypoints.
+    - Verifies 0 frames stuck > 2s and 0 camera geometry penetrations, reporting results to `window.__ARKVOID_WALK_TEST__`.
+  - Comprehensive unit test suite in `src/engine/locomotion/step13.test.ts` (all 5 tests passing).
 
 ## Decisions
-- World chunk budget adjusted from 650 KB to 850 KB gzipped in `scripts/check-budget.mjs` and `docs/STATE.md` to support full Sect architecture, dougong brackets, procedural PBR texture generation, and multi-pass HDR post-processing; current production world chunk is ~224 KB gzipped, well inside the 850 KB limit.
-- Screen-space sun shafts execute a 24-sample radial blur on a quarter-resolution HalfFloat target, evaluating only when the sun is above the horizon and within the camera's forward field of view, weighting intensity strongest during dawn (5.2–8.0h) and dusk (16.5–19.5h).
-- Bloom threshold is clamped to 1.0 in linear HDR space, ensuring only un-tonemapped high-energy light sources (sun disc, glowing lanterns, incense braziers, spirit flames) bloom without causing flat surfaces or porcelain cliffs to glow artificially.
-- Procedural lens glare on desktop uses 3 additive gaussian discs along the screen-space vector between sun center and viewport center with soft golden and lavender tints, avoiding heavy dirty lens textures or chromatic aberration per Visual Law.
-- Performance Governor prevents oscillation by enforcing a 20-second cooldown between upgrades, requiring 12 consecutive seconds of p95 < 0.7x target, and permanently locking the session tier if 3 downgrades occur within 90 seconds.
-
-- Terrain visuals and analytic collision share `terrain.ts` as single deterministic source of truth: `terrainHeight(x, z)` determines vertex elevation in `IslandMesh.ts` as well as player height and obstacles in `collision.ts` (`heightAt` / `resolveMove`).
-- Stair transition on the south side of the Hall Terrace uses 7 flat treads with step heights <= 0.35 m; player slope check permits steps when `targetY - curY <= MAX_STEP_UP` (0.4 m), letting the player ascend stairs while blocking cliffs > 40 degrees.
-- Arched bridge abutments level the terrain lip roll-off so players transition between bridge deck and island surface without drops or slope collisions.
-- Procedural canvas fallbacks generate rich 512 px tileable noise patterns with Sobel-derived normals and ARM maps, enabling immediate first-frame rendering and graceful degradation when storage bucket assets are not yet uploaded.
-- Terrain shaders compute normal blending analytically via screen-space derivatives (`dFdx` / `dFdy`) without tangent buffer attributes, minimizing vertex buffer size and draw overhead.
-- Triplanar projection on steep cliffs (world normal Y < 0.75) eliminates UV texture stretching on vertical rock faces across both X and Z cliff orientations.
-- Distant spires are batched into 2 merged draw calls (rock bodies and summit foliage crowns) with an elevation-aware aerial-perspective shader (`<= 0.88x` sky behind them), maintaining high visual depth and scale with minimal GPU overhead.
-- New World Colour Law strictly caps surface albedos to 0.80 (sRGB `#E6E0D2`) so bright sunlight never blows highlights; warmth and glow are produced primarily by the directional key light, fill light, atmospheric scattering, and composite split-toning.
-- The Composer composite pass encapsulates AgX filmic tone mapping, split-toning, S-curve contrast, vibrance, warm vignette, dither, and film grain in a single post-render fullscreen quad, executing tone mapping and color grading strictly in linear space prior to sRGB output.
-- Three.js r174 defines `AgXToneMapping` in default shader chunks; custom shader functions and matrices in `Composer.ts` are prefixed with `ark` / `ARK_` to avoid namespace collisions during WebGL program linkage.
-- The 1 Hz Exposure Probe reads a tiny 64x36 render target (9 KB) once every second, computing Rec.709 relative luminance distribution, percentiles (p5, p95), mean, and clip/crush percentages without stalling frame rates.
-- ShaderChunk fog override (`fog_pars_vertex`, `fog_vertex`, `fog_pars_fragment`, `fog_fragment`) injects altitude-based exponential fog density into all standard and physical materials globally at engine startup, ensuring realistic ground-hugging mist without per-material shader monkey patching.
-- `ink-3` (`#8A8598` on `#FBFAF7`, `3.48:1` contrast) is used for the Orb's 14 px phase glyph and non-essential decorative kickers, while interactive labels, keycaps, and secondary prose use `ink-2` (`#4A4658` on `#FBFAF7`, `8.79:1` AAA contrast) or `ink` (`#17141F`, `17.41:1` AAA contrast) so every readable text pair exceeds WCAG AA (`4.5:1`).
-- `DesignKitScreen` is loaded via `React.lazy(() => import('@/screens/DesignKitScreen'))` guarded by `import.meta.env.DEV || import.meta.env.VITE_ENABLE_KIT === '1'` so production builds exclude the dev kit chunk unless explicitly enabled.
-- `WorldLabel` reads screen-space coordinates and distance from a `MutableRefObject<WorldLabelScreenPoint>` inside `requestAnimationFrame` and writes `transform: translate3d(...)` and `opacity` directly to the DOM element ref, avoiding React re-renders per frame while automatically repelling/fading if a point approaches within `68 px` of the Orb centre.
-- In Three.js r186, rendering any PBR `MeshStandardMaterial` lazily allocates a module-level `DFG_LUT` `DataTexture` (`m_uniforms.dfgLUT.value`) inside `renderer.properties`. `Engine.dispose()` explicitly disposes `dfgLUT` from material properties prior to `renderer.dispose()` so `renderer.info.memory.textures` returns cleanly to `0` across repeated mount/unmount cycles (`?leak=1`).
-- All 5 `CloudSea` FBM planes (`y = -22..-36`) apply a radial alpha and horizon-mist fade (`smoothstep(560.0, 880.0, dist)`) so the geometry boundary never creates a visible seam against the `SkyDome`.
-- `src/engine/world/layout.ts` exports shared mathematical functions `islandRadiusAtAngle()` and `islandSurfaceUndulation()` used by both `IslandMesh.ts` and `collision.ts`, guaranteeing zero discrepancy between visual ground/rim geometry and analytic collision (`heightAt` / `resolveMove`).
-- Static architectural geometry is merged per material via `BufferGeometryUtils.mergeGeometries` and repeated elements (lantern posts, blossom trees, rock spikes, mist skirts, bridge posts, AO decals, god rays, mist ribbons, blossom petals, lantern haloes) use `InstancedMesh` or a single `THREE.Points` draw call, keeping the entire multi-island scene within draw-call budgets (`<= 100` phone / `<= 150` desktop budget) and `0` leaked geometries/textures across 10 full engine cycles (`?leak=1`).
-- The instanced AO contact decals in `LightRig.ts` use a cached `128 x 128` radial gradient texture with a soft violet-grey centre (`rgba(62, 54, 88, 0.30)`) feathering to `0` alpha at the circle border under `NormalBlending`, avoiding WebGL `MultiplyBlending` premultiplied-alpha artifacts while grounding pavilions, trees, and lanterns across all device tiers.
+- Locomotion, player kinematics, camera rig, and candidate evaluation run entirely on CPU with zero memory allocations in the frame tick path.
+- The camera rig uses purely analytic collision sampling across 8 points rather than raycasting meshes, guaranteeing instantaneous response under 0.15 ms on phones and eliminating frame hitching.
+- The dynamic joystick appears where the thumb lands on the lower-left half of the touch screen with responsive ease, avoiding visual clutter by hiding when idle and respecting safe areas and gesture exclusion margins.
+- World interaction prompts are synchronized through `EngineBridge` at 10 Hz only upon state changes, causing 0 unnecessary React re-renders per frame and cleanly exposing the Pearl contextual action `Pill`.
+- Third-person camera automatically adjusts nominal distance and shoulder offset based on device class (closer and centred on mobile, shoulder offset on desktop) and interior bounding volume (tightens to 2.2 m inside the Main Hall).
+- Character rendering uses zero downloaded 3D models or textures: all body parts, lathe robes, sleeves, sashes, and form accessories are synthesized procedurally in code with smooth normals and procedural canvas textures, keeping memory negligible.
+- Procedural robe deformation is executed inside a single custom vertex shader hook on `MeshPhysicalMaterial` / `MeshStandardMaterial`, deforming the lathe vertices by walking swing phase, backward velocity trailing, spring damping, global wind, and breathing without costly CPU skinning.
+- The robe hem radius is clamped to at least 0.34 m (0.38 m at baseline), well outside the 0.18 m leg capsule envelopes, preventing leg clipping during walking and running.
+- Animator uses fixed pre-allocated pose buffers and vector scratches, guaranteeing zero memory allocations per frame and maintaining tick execution times under 0.15 ms on desktop and 0.35 ms on mobile.
+- Proximity LOD distance thresholds are 14 m (Near), 40 m (Mid), 90 m (Far), with hard caps of at most 8 Near instances on desktop and 4 on mobile, automatically degrading more distant wanderers to prevent GPU fill-rate exhaustion.
+- The local player position updates `WindSystem.setPushPoint(0, x, y, z, 0.95)`, naturally driving trampling and deflection in `GrassSystem` blades as the player walks across the meadows.
 
 ## Known issues
 - PNG icon binaries (`icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon-180.png`) under `public/icons/` must be supplied by the founder as documented in `public/icons/README.md`; `public/icons/favicon.svg` is active now.

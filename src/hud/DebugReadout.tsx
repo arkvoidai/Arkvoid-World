@@ -20,6 +20,7 @@ export function DebugReadout({
   const triangles = useWorldBridgeStore((s) => s.triangles);
   const hour = useWorldBridgeStore((s) => s.hour);
   const natureStats = useWorldBridgeStore((s) => s.natureStats);
+  const actorStats = useWorldBridgeStore((s) => s.actorStats);
 
   const [probe, setProbe] = useState<ExposureProbeStats | null>(null);
   const [assetReport, setAssetReport] = useState<AssetStoreReport | null>(null);
@@ -62,6 +63,10 @@ export function DebugReadout({
           {`${fps} FPS · P95 ${frameMsP95.toFixed(1)}MS · DC ${drawCalls} · TRI ${triangles} · ${hour.toFixed(2)}H${
             natureStats
               ? ` · GRASS ${natureStats.grass} · FLW ${natureStats.flowers} · TREE ${natureStats.trees}`
+              : ''
+          }${
+            actorStats
+              ? ` · ACTORS ${actorStats.count} (${actorStats.near} NEAR) ${actorStats.frameMs.toFixed(2)}MS`
               : ''
           }`}
         </div>

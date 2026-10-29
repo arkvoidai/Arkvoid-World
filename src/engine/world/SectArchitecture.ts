@@ -897,8 +897,10 @@ export function createSectArchitecture(
   bellGroup.position.set(5.5, 0, -16.0);
   rootGroup.add(bellGroup);
   dynamicUpdaters.push((t) => {
-    // Subtle idle swing of bronze bell
-    bellMesh.rotation.z = Math.sin(t * 1.8) * 0.045;
+    // Subtle idle swing of bronze bell when not driven by interactables
+    if (!bellMesh.userData.drivenByInteractables) {
+      bellMesh.rotation.z = Math.sin(t * 1.8) * 0.045;
+    }
   });
 
   platforms.push({

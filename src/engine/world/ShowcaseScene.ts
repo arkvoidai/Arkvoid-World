@@ -31,6 +31,39 @@ import {
 import { hourNow, REVIEW_HOURS, setHourOverride } from '@/lib/worldClock';
 import { CameraRailController, BUILT_IN_RAILS } from '@/engine/core/CameraRail';
 import { BenchmarkSession, BENCHMARK_RAIL } from '@/engine/core/Benchmark';
+import { Wanderer, type FormId, type LeaningId } from '@/engine/actors/Wanderer';
+import { WandererPool } from '@/engine/actors/WandererPool';
+import {
+  PlayerController,
+  InputManager,
+  CameraRig,
+  InteractablesSystem,
+  type InputState,
+} from '@/engine/locomotion';
+import { ActorsLineup } from '@/engine/actors/ActorsLineup';
+import { heightAt } from '@/engine/world/collision';
+import { useGameStore } from '@/state/game';
+import { positionSaver } from '@/net/positionSaver';
+
+declare global {
+  interface Window {
+    __ARKVOID_WALK_TEST__?: {
+      passed: boolean;
+      duration: number;
+      maxStuckDurationSec: number;
+      penetrationFrames: number;
+      totalFrames: number;
+      report: string;
+    };
+  }
+}
+
+export interface ShowcaseSystemOptions {
+  reviewShots?: boolean;
+  actorsLineup?: boolean;
+  playerForm?: FormId;
+  playerLeaning?: LeaningId;
+}
 
 export class ShowcaseWorldSystem implements System {
   readonly id = 'world-showcase';
@@ -58,6 +91,59 @@ export class ShowcaseWorldSystem implements System {
   private grass: GrassSystem | null = null;
   private life: LifeSystem | null = null;
 
+  // Wanderer Actors, Locomotion & Player
+  private wandererPool: WandererPool | null = null;
+  private playerController: PlayerController | null = null;
+  private inputManager: InputManager | null = null;
+  private cameraRig: CameraRig | null = null;
+  private interactables: InteractablesSystem | null = null;
+  private actorsLineup: ActorsLineup | null = null;
+  readonly isActorsMode: boolean = false;
+  readonly playerForm: FormId = 0;
+  readonly playerLeaning: LeaningId = 'dawn';
+  private hasStartedLocomotion = false;
+  private isWalkTest = false;
+  private walkTestTimer = 0;
+  private walkTestWaypointIndex = 0;
+  private readonly walkTestLastPosition = new THREE.Vector3();
+  private walkTestStuckDuration = 0;
+  private walkTestMaxStuckDuration = 0;
+  private walkTestPenetrationFrames = 0;
+  private walkTestTotalFrames = 0;
+  private readonly syntheticInput: InputState = {
+    moveX: 0,
+    moveY: 0,
+    lookDeltaYaw: 0,
+    lookDeltaPitch: 0,
+    run: false,
+    interact: false,
+    cancel: false,
+  };
+  private readonly activeInput: InputState = {
+    moveX: 0,
+    moveY: 0,
+    lookDeltaYaw: 0,
+    lookDeltaPitch: 0,
+    run: false,
+    interact: false,
+    cancel: false,
+  };
+
+  private static readonly WALK_TEST_WAYPOINTS: readonly THREE.Vector3[] = [
+    new THREE.Vector3(0, 0, 10),
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(-4.5, 0.35, -7.5),
+    new THREE.Vector3(-9.0, 0.05, -3.0),
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(5.5, 0.22, -15.0),
+    new THREE.Vector3(2.0, 0, -6.0),
+    new THREE.Vector3(7.2, 2.2, -6.0),
+    new THREE.Vector3(12.0, 2.45, -6.0),
+    new THREE.Vector3(7.2, 2.2, -6.0),
+    new THREE.Vector3(2.0, 0, -6.0),
+    new THREE.Vector3(0, 0, 14),
+  ];
+
   private readonly skyState: TimeOfDayState = createTimeOfDayState();
   private readonly defaultLookTarget = new THREE.Vector3(6, 2, -4);
   private readonly activeLookTarget = new THREE.Vector3(6, 2, -4);
@@ -71,9 +157,41 @@ export class ShowcaseWorldSystem implements System {
   readonly railController = new CameraRailController();
   private benchmarkSession: BenchmarkSession | null = null;
 
-  constructor(initialReviewMode = false) {
-    if (initialReviewMode) {
-      this.reviewShotIndex = 0;
+  constructor(options: ShowcaseSystemOptions | boolean = false) {
+    if (typeof options === 'boolean') {
+      if (options) {
+        this.reviewShotIndex = 0;
+      }
+    } else {
+      if (options.reviewShots) {
+        this.reviewShotIndex = 0;
+      }
+      this.isActorsMode = Boolean(options.actorsLineup);
+      if (options.playerForm !== undefined) {
+        this.playerForm = options.playerForm;
+      }
+      if (options.playerLeaning !== undefined) {
+        this.playerLeaning = options.playerLeaning;
+      }
+    }
+
+    // Also inspect URL query params if in browser
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('actors') === '1') {
+        this.isActorsMode = true;
+      }
+      const fParam = params.get('form');
+      if (fParam !== null) {
+        const parsed = parseInt(fParam, 10);
+        if (parsed >= 0 && parsed <= 3) {
+          this.playerForm = parsed as FormId;
+        }
+      }
+      const lParam = params.get('leaning');
+      if (lParam === 'dawn' || lParam === 'dusk' || lParam === 'still') {
+        this.playerLeaning = lParam;
+      }
     }
   }
 
@@ -106,6 +224,30 @@ export class ShowcaseWorldSystem implements System {
     return this.materialLibrary;
   }
 
+  getPlayerController(): PlayerController | null {
+    return this.playerController;
+  }
+
+  getInputManager(): InputManager | null {
+    return this.inputManager;
+  }
+
+  getCameraRig(): CameraRig | null {
+    return this.cameraRig;
+  }
+
+  getInteractables(): InteractablesSystem | null {
+    return this.interactables;
+  }
+
+  getWandererPool(): WandererPool | null {
+    return this.wandererPool;
+  }
+
+  getActorsLineup(): ActorsLineup | null {
+    return this.actorsLineup;
+  }
+
   getWorldGroup(): THREE.Group | null {
     return this.worldGroup;
   }
@@ -134,6 +276,10 @@ export class ShowcaseWorldSystem implements System {
         this.benchmarkSession = new BenchmarkSession(ctx.device, 0, 'balanced');
       } else if (railParam && BUILT_IN_RAILS[railParam]) {
         this.railController.play(BUILT_IN_RAILS[railParam]!, { loop: true });
+      }
+      if (params.get('walk') === '1') {
+        this.isWalkTest = true;
+        this.hasStartedLocomotion = true;
       }
     }
 
@@ -240,6 +386,86 @@ export class ShowcaseWorldSystem implements System {
     this.life = new LifeSystem(isPhone);
     this.worldGroup.add(this.life);
 
+    // 6. Characters, Residents & Crowd Pool
+    this.wandererPool = new WandererPool(ctx.device);
+    this.worldGroup.add(this.wandererPool.group);
+
+    // Spawn 4 World Residents
+    const hale = this.wandererPool.spawn('hale', { resident: 'hale' });
+    hale.position.set(12, heightAt(12, -6) ?? 0, -6);
+    hale.rotation.y = -Math.PI / 4;
+    hale.setAnimationState('sit-meditate');
+
+    const ione = this.wandererPool.spawn('ione', { resident: 'ione' });
+    ione.position.set(60, heightAt(60, -8) ?? -2, -8);
+    ione.rotation.y = Math.PI / 2;
+    ione.setAnimationState('idle');
+
+    const tamsin = this.wandererPool.spawn('tamsin', { resident: 'tamsin' });
+    tamsin.position.set(0, heightAt(0, 8) ?? 0, 8);
+    tamsin.rotation.y = Math.PI;
+    tamsin.setAnimationState('walk');
+
+    const corvin = this.wandererPool.spawn('corvin', { resident: 'corvin' });
+    corvin.position.set(6, heightAt(6, -17) ?? 0, -17);
+    corvin.rotation.y = -Math.PI / 2;
+    corvin.setAnimationState('idle');
+
+    // Local Player Character (at saved position if available, else SPAWN 0, 0, 14)
+    const savedChar = useGameStore.getState().character;
+    const initialPos = savedChar?.pos
+      ? new THREE.Vector3(savedChar.pos.x, savedChar.pos.y, savedChar.pos.z)
+      : new THREE.Vector3(0, 0, 14);
+    const initialYaw = savedChar?.pos?.ry ?? 0;
+
+    const localPlayer = new Wanderer({
+      form: this.playerForm,
+      leaning: this.playerLeaning,
+      castShadow: true,
+    });
+    localPlayer.position.copy(initialPos);
+    localPlayer.rotation.y = initialYaw;
+    this.worldGroup.add(localPlayer);
+
+    this.playerController = new PlayerController(localPlayer, {
+      assistedMovement: false,
+      initialPosition: initialPos,
+      initialYaw: initialYaw,
+      onEdgeToast: (message) => {
+        ctx.events.emit('toast', { message });
+      },
+    });
+
+    this.inputManager = new InputManager(ctx.renderer.domElement, {
+      assistedMovement: false,
+      reducedMotion: ctx.device.reducedMotion,
+    });
+
+    this.cameraRig = new CameraRig(ctx.camera, ctx.device, {
+      assistedMovement: false,
+      reducedMotion: ctx.device.reducedMotion,
+    });
+
+    this.interactables = new InteractablesSystem(this.playerController, this.cameraRig, {
+      onToast: (message) => {
+        ctx.events.emit('toast', { message });
+      },
+      onBellRung: () => {
+        // Bell feedback
+      },
+    });
+
+    const swingingBell = this.sectArch?.group.getObjectByName('SwingingBell');
+    if (swingingBell) {
+      this.interactables.bellSwingMesh = swingingBell;
+    }
+
+    // Dev Lineup Stage if ?actors=1
+    if (this.isActorsMode) {
+      this.actorsLineup = new ActorsLineup();
+      this.worldGroup.add(this.actorsLineup.group);
+    }
+
     // 5. Distant Floating Spires
     this.spires = new DistantSpires(isPhone, ctx.assets);
     ctx.scene.add(this.spires);
@@ -270,6 +496,8 @@ export class ShowcaseWorldSystem implements System {
         this.setReviewShot(cmd.shotIndex);
       } else if (cmd.type === 'setHourOverride') {
         this.forceNextSkySync = true;
+      } else if (cmd.type === 'triggerInteract') {
+        this.interactables?.triggerInteraction();
       }
     });
 
@@ -319,6 +547,50 @@ export class ShowcaseWorldSystem implements System {
 
     timeOfDayState(currentHour, this.skyState);
     this.syncFog(force);
+
+    // Sample user or synthetic input
+    const rawInput = this.inputManager?.sample() ?? {
+      moveX: 0,
+      moveY: 0,
+      lookDeltaYaw: 0,
+      lookDeltaPitch: 0,
+      run: false,
+      interact: false,
+      cancel: false,
+    };
+
+    const input = this.isWalkTest
+      ? this.updateSyntheticWalkTest(dt, ctx)
+      : rawInput;
+
+    this.activeInput.moveX = input.moveX;
+    this.activeInput.moveY = input.moveY;
+    this.activeInput.lookDeltaYaw = input.lookDeltaYaw;
+    this.activeInput.lookDeltaPitch = input.lookDeltaPitch;
+    this.activeInput.run = input.run;
+    this.activeInput.interact = input.interact;
+    this.activeInput.cancel = input.cancel;
+
+    const hasInput =
+      Math.hypot(input.moveX, input.moveY) > 0.05 ||
+      Math.abs(input.lookDeltaYaw) > 0.001 ||
+      Math.abs(input.lookDeltaPitch) > 0.001 ||
+      input.interact;
+
+    if (
+      !this.hasStartedLocomotion &&
+      hasInput &&
+      this.reviewShotIndex === null &&
+      !this.railController.isPlaying() &&
+      !this.isActorsMode
+    ) {
+      this.hasStartedLocomotion = true;
+      this.cameraRig?.startHandoffFromShowcase(ctx.camera.position, this.activeLookTarget);
+    }
+
+    if (input.interact) {
+      this.interactables?.triggerInteraction();
+    }
 
     this.updateShowcaseCamera(dt, ctx);
 
@@ -376,6 +648,60 @@ export class ShowcaseWorldSystem implements System {
     this.trees?.update(dt, elapsed, ctx.camera.position, this.skyState);
     this.grass?.update(dt, elapsed, ctx.camera, this.activeLookTarget, this.skyState);
     this.life?.update(dt, elapsed, this.skyState);
+
+    // Update player, residents and wanderer pool
+    const tActors0 = performance.now();
+    const windVec = this.wind?.uniforms.uWindDir.value;
+
+    if (this.playerController) {
+      const camYaw = this.cameraRig ? this.cameraRig.yaw : 0;
+      this.playerController.update(dt, this.activeInput, camYaw, windVec, elapsed);
+      const pPos = this.playerController.position;
+      ctx.bridge.mutable.playerCoarse = { x: pPos.x, y: pPos.y, z: pPos.z };
+      positionSaver.save({
+        x: pPos.x,
+        y: pPos.y,
+        z: pPos.z,
+        ry: this.playerController.facing,
+      });
+      // Register player push point with GrassSystem via WindSystem
+      this.wind?.setPushPoint(0, pPos.x, pPos.y, pPos.z, 0.95);
+    }
+
+    if (this.interactables) {
+      this.interactables.update(
+        dt,
+        elapsed,
+        Math.hypot(this.activeInput.moveX, this.activeInput.moveY) > 0.05,
+        this.activeInput.cancel,
+      );
+    }
+
+    if (this.wandererPool) {
+      this.wandererPool.update(dt, ctx.camera.position, windVec, (x, z) => heightAt(x, z) ?? 0);
+    }
+
+    if (this.actorsLineup) {
+      this.actorsLineup.update(dt, windVec);
+    }
+
+    const tActorsEnd = performance.now();
+    const actorFrameMs = Math.round((tActorsEnd - tActors0) * 100) / 100;
+
+    const totalActors =
+      (this.playerController ? 1 : 0) +
+      (this.wandererPool ? this.wandererPool.getActiveCount() : 0) +
+      (this.actorsLineup ? this.actorsLineup.entries.length : 0);
+    const nearActors =
+      (this.playerController ? 1 : 0) +
+      (this.wandererPool ? this.wandererPool.getNearCount() : 0) +
+      (this.actorsLineup ? this.actorsLineup.entries.length : 0);
+
+    ctx.bridge.mutable.actorStats = {
+      count: totalActors,
+      near: nearActors,
+      frameMs: actorFrameMs,
+    };
 
     ctx.bridge.mutable.natureStats = {
       grass: this.grass?.visibleBladeCount || 0,
@@ -440,6 +766,32 @@ export class ShowcaseWorldSystem implements System {
       return;
     }
 
+    if (this.isActorsMode) {
+      if (Math.abs(ctx.camera.fov - 52) > 0.05) {
+        ctx.camera.fov = 52;
+        ctx.camera.updateProjectionMatrix();
+      }
+      ctx.camera.position.set(0, 3.2, 9.2);
+      this.activeLookTarget.set(0, 1.2, 0.5);
+      ctx.camera.lookAt(this.activeLookTarget);
+      return;
+    }
+
+    if (this.hasStartedLocomotion && this.cameraRig && this.playerController) {
+      this.cameraRig.update(
+        dt,
+        this.playerController.position,
+        this.playerController.facing,
+        this.playerController.speed01,
+        this.activeInput.lookDeltaYaw,
+        this.activeInput.lookDeltaPitch,
+        this.playerController.speed01 > 0.05,
+      );
+      this.activeLookTarget.copy(this.playerController.position);
+      this.activeLookTarget.y += 1.35;
+      return;
+    }
+
     if (Math.abs(ctx.camera.fov - 52) > 0.05) {
       ctx.camera.fov = 52;
       ctx.camera.updateProjectionMatrix();
@@ -464,11 +816,90 @@ export class ShowcaseWorldSystem implements System {
     ctx.camera.lookAt(this.activeLookTarget);
   }
 
+  private updateSyntheticWalkTest(dt: number, ctx: EngineContext): InputState {
+    if (!this.playerController) return this.syntheticInput;
+    this.walkTestTimer += dt;
+    this.walkTestTotalFrames++;
+
+    const pPos = this.playerController.position;
+    const waypoints = ShowcaseWorldSystem.WALK_TEST_WAYPOINTS;
+    const currentWaypoint = waypoints[this.walkTestWaypointIndex]!;
+    const dx = currentWaypoint.x - pPos.x;
+    const dz = currentWaypoint.z - pPos.z;
+    const distToWaypoint = Math.hypot(dx, dz);
+
+    if (distToWaypoint < 1.0) {
+      this.walkTestWaypointIndex = (this.walkTestWaypointIndex + 1) % waypoints.length;
+    }
+
+    const movedDist = pPos.distanceTo(this.walkTestLastPosition);
+    this.walkTestLastPosition.copy(pPos);
+
+    if (movedDist < 0.02 * dt * 60) {
+      this.walkTestStuckDuration += dt;
+      if (this.walkTestStuckDuration > this.walkTestMaxStuckDuration) {
+        this.walkTestMaxStuckDuration = this.walkTestStuckDuration;
+      }
+    } else {
+      this.walkTestStuckDuration = 0;
+    }
+
+    const camY = ctx.camera.position.y;
+    const terrainY = heightAt(ctx.camera.position.x, ctx.camera.position.z, camY);
+    if (terrainY !== null && camY < terrainY + 0.15) {
+      this.walkTestPenetrationFrames++;
+    }
+
+    const angleToTarget = Math.atan2(dx, dz);
+    const cameraYaw = this.cameraRig ? this.cameraRig.yaw : 0;
+    const relAngle = angleToTarget - cameraYaw;
+
+    this.syntheticInput.moveX = Math.sin(relAngle);
+    this.syntheticInput.moveY = Math.cos(relAngle);
+    this.syntheticInput.run = true;
+    this.syntheticInput.lookDeltaYaw = 0;
+    this.syntheticInput.lookDeltaPitch = 0;
+    this.syntheticInput.interact = false;
+    this.syntheticInput.cancel = false;
+
+    if (this.walkTestTimer >= 30.0 && typeof window !== 'undefined') {
+      const passed = this.walkTestMaxStuckDuration < 2.0 && this.walkTestPenetrationFrames === 0;
+      window.__ARKVOID_WALK_TEST__ = {
+        passed,
+        duration: this.walkTestTimer,
+        maxStuckDurationSec: this.walkTestMaxStuckDuration,
+        penetrationFrames: this.walkTestPenetrationFrames,
+        totalFrames: this.walkTestTotalFrames,
+        report: passed
+          ? `PASS: 30s walk test completed without being stuck > 2s (max stuck: ${this.walkTestMaxStuckDuration.toFixed(2)}s) and 0 camera penetrations.`
+          : `FAIL: maxStuck=${this.walkTestMaxStuckDuration.toFixed(2)}s, penetrations=${this.walkTestPenetrationFrames}`,
+      };
+    }
+
+    return this.syntheticInput;
+  }
+
   dispose(): void {
     this.railController.stop();
     if (this.unsubCommand) {
       this.unsubCommand();
       this.unsubCommand = null;
+    }
+    if (this.inputManager) {
+      this.inputManager.dispose();
+      this.inputManager = null;
+    }
+    if (this.cameraRig) {
+      this.cameraRig.dispose();
+      this.cameraRig = null;
+    }
+    if (this.interactables) {
+      this.interactables.dispose();
+      this.interactables = null;
+    }
+    if (this.playerController) {
+      this.playerController.dispose();
+      this.playerController = null;
     }
     if (this.skyDome) {
       this.skyDome.mesh.removeFromParent();
@@ -511,6 +942,14 @@ export class ShowcaseWorldSystem implements System {
     if (this.wind) {
       this.wind.dispose();
       this.wind = null;
+    }
+    if (this.wandererPool) {
+      this.wandererPool.dispose();
+      this.wandererPool = null;
+    }
+    if (this.actorsLineup) {
+      this.actorsLineup.dispose();
+      this.actorsLineup = null;
     }
     if (this.worldGroup) {
       disposeObject3D(this.worldGroup);

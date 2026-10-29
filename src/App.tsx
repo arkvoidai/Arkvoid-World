@@ -1,7 +1,10 @@
-import { Component, Suspense, lazy, type ErrorInfo, type ReactNode } from 'react';
+import { Component, Suspense, lazy, useEffect, useState, type ErrorInfo, type ReactNode } from 'react';
 import { getMissingPublicConfig } from '@/config/public';
 import { SetupScreen } from '@/screens/SetupScreen';
 import { Logo } from '@/ui/Logo';
+import { bootstrapSession } from '@/app/bootstrap';
+import { AccountSheet } from '@/ui/AccountSheet';
+import { useAuthStore } from '@/state/auth';
 
 // Resilient dynamic import that retries on transient network or dev server rebuild glitches
 function lazyWithRetry<P extends object>(
@@ -98,6 +101,15 @@ export default function App() {
       ? new URLSearchParams(window.location.search)
       : null;
 
+  const [accountOpen, setAccountOpen] = useState(() => Boolean(params?.get('account') === '1'));
+  const sessionFailedMessage = useAuthStore((s) => s.sessionFailedMessage);
+
+  useEffect(() => {
+    bootstrapSession().catch((err) => {
+      console.warn('Arkvoid bootstrap error:', err);
+    });
+  }, []);
+
   const showKit = Boolean(params?.get('kit') === '1' && DesignKitScreen);
   if (showKit && DesignKitScreen) {
     return (
@@ -123,6 +135,9 @@ export default function App() {
   const reviewShots = Boolean(params?.get('shots') === '1');
   const benchmark = Boolean(params?.get('bench') === '1');
   const audit = Boolean(params?.get('audit') === '1');
+  const actors = Boolean(params?.get('actors') === '1');
+  const form = params?.get('form') ?? undefined;
+  const leaning = params?.get('leaning') ?? undefined;
 
   return (
     <ErrorBoundary>
@@ -135,6 +150,13 @@ export default function App() {
           reviewShots={reviewShots}
           benchmark={benchmark}
           audit={audit}
+          actors={actors}
+          form={form}
+          leaning={leaning}
+        />
+        <AccountSheet
+          open={accountOpen || Boolean(sessionFailedMessage)}
+          onClose={() => setAccountOpen(false)}
         />
       </Suspense>
     </ErrorBoundary>

@@ -23,6 +23,7 @@ export const useWorldBridgeStore = create<WorldBridgeStoreState>((set) => ({
   prompt: null,
   loadProgress: 0,
   natureStats: undefined,
+  actorStats: undefined,
   updateFromBridge(snapshot) {
     set({
       fps: snapshot.fps,
@@ -34,6 +35,7 @@ export const useWorldBridgeStore = create<WorldBridgeStoreState>((set) => ({
       prompt: snapshot.prompt,
       loadProgress: snapshot.loadProgress,
       natureStats: snapshot.natureStats,
+      actorStats: snapshot.actorStats,
     });
   },
   sendCommand(cmd) {

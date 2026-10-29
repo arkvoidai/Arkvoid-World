@@ -52,6 +52,7 @@ export type EngineEvents = {
   contextRestored: void;
   command: EngineCommand;
   qualityScale: { scale: number };
+  toast: { message: string };
 };
 
 export interface CollisionAPI {

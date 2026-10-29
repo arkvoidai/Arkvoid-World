@@ -25,6 +25,11 @@ export interface BridgeSnapshot {
     trees: number;
     particles: number;
   };
+  actorStats?: {
+    count: number;
+    near: number;
+    frameMs: number;
+  };
 }
 
 export type EngineCommand =
@@ -32,7 +37,8 @@ export type EngineCommand =
   | { type: 'setHourOverride'; hour: number | null }
   | { type: 'setTimeSpeed'; speed: number }
   | { type: 'setPostProcessing'; enabled: boolean }
-  | { type: 'setReviewShot'; shotIndex: number | null };
+  | { type: 'setReviewShot'; shotIndex: number | null }
+  | { type: 'triggerInteract' };
 
 
 export type SnapshotSubscriber = (snapshot: Readonly<BridgeSnapshot>) => void;

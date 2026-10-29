@@ -343,7 +343,7 @@ function clampToWalkableArea(
   return { x: prevX, z: prevZ, clamped: true };
 }
 
-function isOnBridge(x: number, z: number): boolean {
+export function isOnBridge(x: number, z: number): boolean {
   for (let i = 0; i < BRIDGES.length; i++) {
     if (evaluateBridgeHeight(BRIDGES[i]!, x, z) !== null) {
       return true;
