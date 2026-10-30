@@ -40,27 +40,27 @@ export function GateOverlay({ onBegin, onAccountResolved, isLoading = false }: G
   return (
     <aside
       aria-label="Welcome Gate"
-      className="pointer-events-none fixed inset-0 z-hud flex flex-col justify-between p-6 select-none"
+      className="pointer-events-none fixed inset-0 z-hud flex flex-col justify-between overflow-y-auto overscroll-contain px-4 pt-[calc(env(safe-area-inset-top)+1rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)] select-none sm:px-6"
     >
       {/* Top tiny mono label */}
       <div className="flex items-center justify-between">
         <span
           data-testid="gate-early-preview-badge"
-          className="rounded-pill border border-line bg-white/85 px-2.5 py-1 font-mono text-[10px] tracking-widest text-ink-3 shadow-sm backdrop-blur-md"
+          className="rounded-pill border border-white/70 bg-[#fbfaf7]/90 px-3 py-1.5 font-mono text-[10px] tracking-[0.18em] text-ink-3 shadow-sm backdrop-blur-xl"
         >
           EARLY PREVIEW
         </span>
       </div>
 
       {/* Main Gate Card: Bottom centered on phones, left-center on desktop */}
-      <div className="pointer-events-auto flex flex-col w-full max-w-md mx-auto md:mx-0 md:my-auto mb-3 md:mb-0">
+      <div className="pointer-events-auto my-auto mx-auto flex w-full max-w-[26rem] flex-col">
         <div
           data-testid="gate-main-card"
-          className="flex flex-col gap-5 rounded-panel border border-line bg-white/92 p-6 shadow-violet-layered backdrop-blur-md md:p-8"
+          className="flex flex-col gap-4 rounded-[26px] border border-white/70 bg-[#fbfaf7]/95 p-5 shadow-[0_24px_80px_rgba(18,12,22,0.28)] backdrop-blur-2xl sm:gap-5 sm:p-7"
         >
           {/* Logo Lockup */}
           <div className="flex items-center">
-            <Logo size={42} variant="lockup" />
+            <Logo size={38} variant="lockup" />
           </div>
 
           {/* World Name in Instrument Serif italic */}
@@ -71,19 +71,26 @@ export function GateOverlay({ onBegin, onAccountResolved, isLoading = false }: G
             >
               Celestial Frontier
             </h1>
+            <p className="mt-1 text-xs leading-relaxed text-ink-3 sm:text-sm">
+              A living world that remembers you.
+            </p>
           </div>
 
           {/* Primary Action Button: "Begin" */}
-          <div className="flex flex-col gap-2.5 pt-2">
+          <div className="flex flex-col gap-2 pt-1">
             <Button
               data-testid="gate-begin-btn"
               variant="light"
-              size="lg"
+              size="md"
               loading={isLoading || clickPending || status === 'loading'}
               onClick={handleBeginClick}
-              className="w-full text-base font-medium shadow-sm hover:shadow"
+              className="w-full text-sm font-semibold tracking-wide shadow-sm hover:shadow"
+              style={{
+                backgroundImage: 'linear-gradient(110deg, #f5b777 0%, #efa878 58%, #e4aaa0 100%)',
+                boxShadow: '0 12px 28px rgba(180, 104, 78, 0.20)',
+              }}
             >
-              Begin
+              Enter Arkvoid
             </Button>
 
             {localError && (
@@ -95,14 +102,14 @@ export function GateOverlay({ onBegin, onAccountResolved, isLoading = false }: G
               onClick={() => setAccountSheetOpen(true)}
               className="py-2 text-center text-xs text-ink-3 hover:text-ink transition-colors"
             >
-              I have an account
+              I already have an account
             </button>
           </div>
         </div>
       </div>
 
       {/* Footer tiny links for Privacy and Terms */}
-      <footer className="pointer-events-auto flex items-center justify-center gap-4 py-1 text-[11px] text-ink-3">
+      <footer className="pointer-events-auto flex items-center justify-center gap-4 py-2 text-[11px] text-ink-3">
         <button
           type="button"
           onClick={() => setLegalSheetDoc('privacy')}

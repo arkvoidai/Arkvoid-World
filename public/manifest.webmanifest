@@ -3,8 +3,8 @@
   "short_name": "Arkvoid",
   "display": "standalone",
   "start_url": "/",
-  "theme_color": "#FBFAF7",
-  "background_color": "#FBFAF7",
+  "theme_color": "#1D1724",
+  "background_color": "#1D1724",
   "icons": [
     {
       "src": "/icons/icon-192.png",

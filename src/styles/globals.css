@@ -97,7 +97,7 @@ body,
   min-height: 100dvh;
   margin: 0;
   padding: 0;
-  background-color: var(--color-pearl);
+  background-color: #1d1724;
   color: var(--color-ink);
   font-family:
     'Geist Variable',
@@ -142,6 +142,111 @@ body,
 
 @media (prefers-reduced-motion: reduce) {
   .arkvoid-orange-dot-pulse {
+    animation: none;
+  }
+}
+
+/* First paint uses the same deep dusk tone as the world canvas to prevent a white flash. */
+.arkvoid-loading-screen {
+  display: grid;
+  width: 100%;
+  min-height: 100dvh;
+  place-items: center;
+  overflow: hidden;
+  color: #f6f0e9;
+  background:
+    radial-gradient(circle at 50% 43%, rgba(202, 130, 100, 0.16), transparent 38%),
+    radial-gradient(circle at 16% 84%, rgba(120, 83, 117, 0.14), transparent 40%),
+    linear-gradient(155deg, #251d2d 0%, #1d1724 58%, #17131d 100%);
+}
+.arkvoid-loading-content {
+  display: flex;
+  width: min(100% - 48px, 280px);
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.arkvoid-loader-orbit {
+  position: relative;
+  display: grid;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 8px;
+  place-items: center;
+  border: 1px solid rgba(244, 222, 202, 0.14);
+  border-radius: 50%;
+}
+.arkvoid-loader-orbit::before,
+.arkvoid-loader-orbit::after {
+  position: absolute;
+  inset: 6px;
+  border: 1px solid transparent;
+  border-top-color: rgba(246, 192, 145, 0.9);
+  border-right-color: rgba(246, 192, 145, 0.24);
+  border-radius: 50%;
+  content: "";
+  animation: arkvoid-orbit 2.4s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+}
+.arkvoid-loader-orbit::after {
+  inset: 14px;
+  border-top-color: rgba(241, 216, 194, 0.46);
+  border-right-color: transparent;
+  animation-duration: 3.6s;
+  animation-direction: reverse;
+}
+.arkvoid-loader-core {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f2b17c;
+  box-shadow: 0 0 18px rgba(242, 177, 124, 0.72);
+  animation: arkvoid-core-pulse 2.2s ease-in-out infinite;
+}
+.arkvoid-loading-wordmark {
+  padding-left: 0.34em;
+  color: rgba(250, 243, 235, 0.9);
+  font-family: 'Geist Variable', sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.34em;
+}
+.arkvoid-loading-caption {
+  color: rgba(250, 243, 235, 0.62);
+  font-size: 12px;
+  letter-spacing: 0.025em;
+}
+.arkvoid-loading-track {
+  width: 88px;
+  height: 2px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(246, 240, 233, 0.12);
+}
+.arkvoid-loading-track span {
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #d88769, #f4c28e);
+  animation: arkvoid-loading-sweep 1.65s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes arkvoid-orbit {
+  to { transform: rotate(360deg); }
+}
+@keyframes arkvoid-core-pulse {
+  0%, 100% { opacity: 0.72; transform: scale(0.86); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+@keyframes arkvoid-loading-sweep {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(250%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arkvoid-loader-orbit::before,
+  .arkvoid-loader-orbit::after,
+  .arkvoid-loader-core,
+  .arkvoid-loading-track span {
     animation: none;
   }
 }

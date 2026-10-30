@@ -23,7 +23,7 @@ import {
 } from '@/lib/deviceProfile';
 import { hourNow } from '@/lib/worldClock';
 import { sharedEngineBridge, useWorldBridgeStore } from '@/state/worldBridgeStore';
-import { Logo } from '@/ui/Logo';
+import { WorldLoadingScreen } from '@/ui/WorldLoadingScreen';
 import { Pill } from '@/ui/Pill';
 import ActorsLineupOverlay from '@/hud/ActorsLineupOverlay';
 import type { FormId, LeaningId } from '@/engine/actors/WandererMaterials';
@@ -118,10 +118,13 @@ export default function WorldHost({
   const [isBeginning, setIsBeginning] = useState(false);
   const [awakeningError, setAwakeningError] = useState<string | null>(null);
   const [hallReached, setHallReached] = useState(false);
+  const [sessionReady, setSessionReady] = useState(() => viewMode !== 'boot');
+  const worldReady = firstFrameReady && sessionReady;
 
   // Bootstrap session and route to gate, awakening, or arrival
   useEffect(() => {
     if (viewMode !== 'boot') {
+      setSessionReady(true);
       if (viewMode === 'gate' || viewMode === 'awakening') {
         sharedEngineBridge.enqueue({ type: 'setViewMode', mode: viewMode });
       }
@@ -153,12 +156,14 @@ export default function WorldHost({
             sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
           }
         }
+        setSessionReady(true);
       })
       .catch((err) => {
         console.warn('Bootstrap error:', err);
         if (!cancelled) {
           setViewMode('gate');
           sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'gate' });
+          setSessionReady(true);
         }
       });
 
@@ -267,12 +272,12 @@ export default function WorldHost({
   }, [syncVignetteOverlay]);
 
   useEffect(() => {
-    if (!firstFrameReady) return;
+    if (!worldReady) return;
     const timer = window.setTimeout(() => {
       setSplashMounted(false);
-    }, 650);
+    }, 360);
     return () => window.clearTimeout(timer);
-  }, [firstFrameReady]);
+  }, [worldReady]);
 
   const handleCaptureFrame = useCallback((): string | null => {
     const eng = engineRef.current;
@@ -465,7 +470,7 @@ export default function WorldHost({
   }, [actors, audit, benchmark, form, leaning, leakTest, probe, reviewShots, syncVignetteOverlay]);
 
   return (
-    <main className="relative h-full w-full overflow-hidden bg-pearl select-none">
+    <main className="relative h-full w-full overflow-hidden bg-[#1d1724] select-none">
       <div
         ref={hostRef}
         data-testid="world-canvas-host"
@@ -502,7 +507,7 @@ export default function WorldHost({
       )}
 
       {/* Step 15 Gate Overlay: Welcome over live showcase world */}
-      {viewMode === 'gate' && firstFrameReady && (
+      {viewMode === 'gate' && worldReady && (
         <GateOverlay
           onBegin={handleBegin}
           onAccountResolved={handleAccountResolved}
@@ -511,7 +516,7 @@ export default function WorldHost({
       )}
 
       {/* Step 15 Awakening Screen: 3D character creation */}
-      {viewMode === 'awakening' && firstFrameReady && (
+      {viewMode === 'awakening' && worldReady && (
         <AwakeningScreen
           onAwakenComplete={handleAwakenComplete}
           error={awakeningError}
@@ -583,12 +588,12 @@ export default function WorldHost({
 
       {splashMounted ? (
         <div
-          aria-hidden={firstFrameReady}
-          className={`pointer-events-none fixed inset-0 z-system flex flex-col items-center justify-center bg-pearl transition-opacity duration-[600ms] ease-out ${
-            firstFrameReady ? 'opacity-0' : 'opacity-100'
+          aria-hidden={worldReady}
+          className={`pointer-events-none fixed inset-0 z-system transition-opacity duration-500 ease-out ${
+            worldReady ? 'opacity-0' : 'opacity-100'
           }`}
         >
-          <Logo size={42} />
+          <WorldLoadingScreen />
         </div>
       ) : null}
     </main>
