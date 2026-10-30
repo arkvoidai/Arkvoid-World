@@ -1000,7 +1000,7 @@ export class ShowcaseWorldSystem implements System {
     }
 
     if (this.wandererPool) {
-      this.wandererPool.update(dt, ctx.camera.position, windVec, (x, z) => heightAt(x, z) ?? 0);
+      this.wandererPool.update(dt, ctx.camera.position, windVec, (x, z) => expandedRegionHeightAt(x, z) ?? heightAt(x, z) ?? 0);
     }
 
     if (this.actorsLineup) {
@@ -1191,7 +1191,7 @@ export class ShowcaseWorldSystem implements System {
     }
 
     const camY = ctx.camera.position.y;
-    const terrainY = heightAt(ctx.camera.position.x, ctx.camera.position.z, camY);
+    const terrainY = expandedRegionHeightAt(ctx.camera.position.x, ctx.camera.position.z) ?? heightAt(ctx.camera.position.x, ctx.camera.position.z, camY);
     if (terrainY !== null && camY < terrainY + 0.15) {
       this.walkTestPenetrationFrames++;
     }
