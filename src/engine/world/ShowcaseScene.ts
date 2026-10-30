@@ -24,7 +24,7 @@ import { LifeSystem } from '@/engine/fx/Life';
 import { REVIEW_SHOTS } from '@/engine/world/reviewShots';
 import { SkyDome } from '@/engine/world/SkyDome';
 import { FarMountainRanges } from '@/engine/world/FarMountainRanges';
-import { WorldRegions, EXPANDED_REGIONS, HOME_REGION_GATES, expandedRegionAt } from '@/engine/world/WorldRegions';
+import { WorldRegions, EXPANDED_REGIONS, HOME_REGION_GATES, expandedRegionAt, expandedRegionHeightAt } from '@/engine/world/WorldRegions';
 import { DiscoveryTracker, discoverableAreaAt } from '@/engine/world/atlas';
 import { WeatherController } from '@/engine/world/sky/Weather';
 import { worldMinute } from '@/lib/worldClock';
@@ -459,18 +459,18 @@ export class ShowcaseWorldSystem implements System {
     corvin.setAnimationState('idle');
 
     // Three named women inhabit the new continents, each with a distinct form and palette.
-    const meilin = this.wandererPool.spawn('meilin', { resident: 'meilin', form: 3 });
-    meilin.position.set(2385, heightAt(2385, -3575) ?? 72, -3575);
+    const meilin = this.wandererPool.spawn('meilin', { resident: 'meilin', form: 2 });
+    meilin.position.set(2385, expandedRegionHeightAt(2385, -3575) ?? 72, -3575);
     meilin.rotation.y = Math.PI * 0.72;
     meilin.setAnimationState('idle');
 
     const yue = this.wandererPool.spawn('yue', { resident: 'yue', form: 1 });
-    yue.position.set(-4940, heightAt(-4940, -2390) ?? 48, -2390);
+    yue.position.set(-4940, expandedRegionHeightAt(-4940, -2390) ?? 48, -2390);
     yue.rotation.y = -Math.PI / 2;
     yue.setAnimationState('idle');
 
-    const sylva = this.wandererPool.spawn('sylva', { resident: 'sylva', form: 3 });
-    sylva.position.set(-1775, heightAt(-1775, 4260) ?? 60, 4260);
+    const sylva = this.wandererPool.spawn('sylva', { resident: 'sylva', form: 0 });
+    sylva.position.set(-1775, expandedRegionHeightAt(-1775, 4260) ?? 60, 4260);
     sylva.rotation.y = Math.PI;
     sylva.setAnimationState('idle');
 
@@ -564,7 +564,7 @@ export class ShowcaseWorldSystem implements System {
         if (!destination) return;
         const x = destination.center.x - 115;
         const z = destination.center.z + 125;
-        const y = heightAt(x, z) ?? destination.baseY;
+        const y = expandedRegionHeightAt(x, z) ?? destination.baseY;
         this.playerController.teleport(x, y, z, 0);
         this.localPlayer?.setAnimationState('idle', 0.2);
         ctx.events.emit('toast', { message: 'Arrived in ' + destination.name });
@@ -592,7 +592,7 @@ export class ShowcaseWorldSystem implements System {
         onInteract: () => {
           const x = destination.center.x - 115;
           const z = destination.center.z + 125;
-          const y = heightAt(x, z) ?? destination.baseY;
+          const y = expandedRegionHeightAt(x, z) ?? destination.baseY;
           this.playerController!.teleport(x, y, z, 0);
           this.localPlayer?.setAnimationState('idle', 0.2);
           ctx.events.emit('toast', { message: 'Arrived in ' + destination.name });
@@ -601,7 +601,7 @@ export class ShowcaseWorldSystem implements System {
       this.interactables.register({
         id: 'return-' + gate.id,
         kind: 'gate',
-        position: new THREE.Vector3(destination.center.x - 90, heightAt(destination.center.x - 90, destination.center.z + 110) ?? destination.baseY, destination.center.z + 110),
+        position: new THREE.Vector3(destination.center.x - 90, expandedRegionHeightAt(destination.center.x - 90, destination.center.z + 110) ?? destination.baseY, destination.center.z + 110),
         radius: 8.5,
         label: 'the Home Reach gate',
         verb: 'Return to',
@@ -624,7 +624,7 @@ export class ShowcaseWorldSystem implements System {
       this.interactables.register({
         id: 'talk-' + resident.id,
         kind: 'custom',
-        position: new THREE.Vector3(resident.x, heightAt(resident.x, resident.z) ?? 0, resident.z),
+        position: new THREE.Vector3(resident.x, expandedRegionHeightAt(resident.x, resident.z) ?? 0, resident.z),
         radius: 3.6,
         label: resident.name,
         verb: 'Talk to',
@@ -891,6 +891,7 @@ export class ShowcaseWorldSystem implements System {
     const weatherMinute = worldDay * 1440 + this.skyState.hour * 60;
     const debugPosition = this.playerController?.position ?? ctx.camera.position;
     const activeRegion = expandedRegionAt(debugPosition.x, debugPosition.z);
+    this.worldRegions?.setActiveRegion(activeRegion?.id ?? 'home-reach');
     const climate = activeRegion?.id === 'veiled-peaks'
       ? { temperature: 0.12, moisture: 0.84, snowAllowed: true }
       : activeRegion?.id === 'capital-valley'

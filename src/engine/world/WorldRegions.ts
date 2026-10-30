@@ -273,6 +273,7 @@ function addPortalArch(group: THREE.Group, x: number, y: number, z: number, tint
 
 export class WorldRegions extends THREE.Group {
   private readonly materials: THREE.Material[] = [];
+  private readonly regionGroups = new Map<ExpandedRegionId, THREE.Group>();
   constructor(phone = false) {
     super();
     this.name = 'ArkvoidDistinctRegions';
@@ -285,10 +286,10 @@ export class WorldRegions extends THREE.Group {
       addPortalArch(this, gate.position.x, gate.position.y, gate.position.z, gateColours[gate.regionId], 0.82);
     }
     for (const region of EXPANDED_REGIONS) {
-      const returnY = expandedRegionHeightAt(region.center.x - 90, region.center.z + 110) ?? region.baseY;
-      addPortalArch(this, region.center.x - 90, returnY, region.center.z + 110, '#E8D8B0', 1.05);
       const area = new THREE.Group();
       area.name = 'Region_' + region.id;
+      const returnY = expandedRegionHeightAt(region.center.x - 90, region.center.z + 110) ?? region.baseY;
+      addPortalArch(area, region.center.x - 90, returnY, region.center.z + 110, '#E8D8B0', 1.05);
       const geometry = createTerrain(region, phone);
       const material = new THREE.MeshStandardMaterial({
         color: region.palette.ground,
@@ -306,8 +307,14 @@ export class WorldRegions extends THREE.Group {
       if (region.id === 'veiled-peaks') addMountainLandmarks(area, region);
       if (region.id === 'capital-valley') addCapitalLandmarks(area, region);
       if (region.id === 'primordial-forest') addForestLandmarks(area, region);
+      this.regionGroups.set(region.id, area);
       this.add(area);
     }
+    this.setActiveRegion('home-reach');
+  }
+
+  setActiveRegion(regionId: ExpandedRegionId | 'home-reach'): void {
+    for (const [id, group] of this.regionGroups) group.visible = regionId === id;
   }
 
   override dispose(): void {

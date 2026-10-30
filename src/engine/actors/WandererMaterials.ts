@@ -333,16 +333,17 @@ export class WandererMaterials {
   }
 
   /** Deep chestnut hair with a restrained satin response. */
-  getHairMaterial(): THREE.MeshStandardMaterial {
-    let mat = this.accessoryMaterials.get('hair') as THREE.MeshStandardMaterial;
+  getHairMaterial(color = '#30231F'): THREE.MeshStandardMaterial {
+    const key = 'hair:' + color;
+    let mat = this.accessoryMaterials.get(key) as THREE.MeshStandardMaterial;
     if (!mat) {
       mat = new THREE.MeshStandardMaterial({
-        color: new THREE.Color('#30231F'),
+        color: new THREE.Color(color),
         roughness: 0.68,
         metalness: 0,
         side: THREE.DoubleSide,
       });
-      this.accessoryMaterials.set('hair', mat);
+      this.accessoryMaterials.set(key, mat);
     }
     return mat;
   }
