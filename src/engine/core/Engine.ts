@@ -46,6 +46,7 @@ export function stepRenderScaleGovernor(
 
 export type EngineEvents = {
   firstFrame: void;
+  discover: { areaId: string };
   paused: string;
   resumed: string;
   contextLost: void;
@@ -145,7 +146,7 @@ export class Engine {
     this.renderer.toneMappingExposure = 1.0;
 
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(52, 1, 0.25, 1600);
+    this.camera = new THREE.PerspectiveCamera(52, 1, 0.25, 45000);
 
     this.ctx = {
       renderer: this.renderer,

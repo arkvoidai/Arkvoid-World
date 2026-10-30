@@ -1,5 +1,7 @@
 import { getSupabase, hasSupabase, withTimeout, ok, err, type Result } from '@/net/supabase';
 import { mapError, createAppError, type AppError } from '@/net/errors';
+import { BUILT_AREAS, BUILT_REGIONS } from '@/engine/world/atlas/Atlas';
+import { isWorldPositionWithinDatabaseBounds } from '@/engine/world/atlas/Coordinates';
 
 export type Leaning = 'dawn' | 'dusk' | 'still';
 export type FormId = 0 | 1 | 2 | 3;
@@ -479,6 +481,10 @@ export async function savePosition(
   area: string,
   pos: CharacterPos,
 ): Promise<Result<void>> {
+  if (!isWorldPositionWithinDatabaseBounds(pos)) {
+    return err(createAppError('VALIDATION', 'World position is outside the supported coordinate bounds.'));
+  }
+
   if (!hasSupabase()) {
     const char = getLocalChar();
     if (char) {
@@ -618,6 +624,70 @@ export async function worldNow(): Promise<Result<string>> {
     const { data, error } = await supabase.rpc('world_now');
     if (error) throw error;
     return typeof data === 'string' ? data : new Date(Number(data) || Date.now()).toISOString();
+  });
+}
+
+export interface AtlasRegionRecord { id: string; name: string; kind: string }
+export interface AtlasAreaRecord { id: string; region_id: string; name: string }
+
+const LOCAL_DISCOVERIES_KEY = 'arkvoid.discoveries';
+
+function readLocalDiscoveries(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(LOCAL_DISCOVERIES_KEY);
+    const values = raw ? JSON.parse(raw) as unknown : [];
+    return Array.isArray(values) ? values.filter((value): value is string => typeof value === 'string') : [];
+  } catch { return []; }
+}
+
+function writeLocalDiscovery(areaId: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const values = new Set(readLocalDiscoveries());
+    values.add(areaId);
+    window.localStorage.setItem(LOCAL_DISCOVERIES_KEY, JSON.stringify([...values]));
+  } catch { /* local storage can be unavailable */ }
+}
+
+export async function getRegions(): Promise<Result<AtlasRegionRecord[]>> {
+  if (!hasSupabase()) return ok(BUILT_REGIONS.map(({ id, name, kind }) => ({ id, name, kind })));
+  return executeWithRetry(async () => {
+    const { data, error } = await getSupabase().from('regions').select('id,name,kind').order('id');
+    if (error) throw error;
+    return (data ?? []) as AtlasRegionRecord[];
+  });
+}
+
+export async function getAreas(): Promise<Result<AtlasAreaRecord[]>> {
+  if (!hasSupabase()) return ok(BUILT_AREAS.map(({ id, regionId, name }) => ({ id, region_id: regionId, name })));
+  return executeWithRetry(async () => {
+    const { data, error } = await getSupabase().from('areas').select('id,region_id,name').order('id');
+    if (error) throw error;
+    return (data ?? []) as AtlasAreaRecord[];
+  });
+}
+
+export async function getDiscoveredAreas(): Promise<Result<string[]>> {
+  if (!hasSupabase()) return ok(readLocalDiscoveries());
+  return executeWithRetry(async () => {
+    const { data, error } = await getSupabase().from('discoveries').select('area_id').order('first_seen');
+    if (error) throw error;
+    return (data ?? []).map((row) => row.area_id as string);
+  });
+}
+
+/** Authenticated and idempotent; the RPC stores discovery for the current user. */
+export async function discoverArea(areaId: string): Promise<Result<boolean>> {
+  if (!BUILT_AREAS.some((area) => area.id === areaId && area.discoverable)) {
+    return err(createAppError('VALIDATION', 'Unknown or non-discoverable built area.'));
+  }
+  writeLocalDiscovery(areaId);
+  if (!hasSupabase()) return ok(true);
+  return executeWithRetry(async () => {
+    const { data, error } = await getSupabase().rpc('discover_area', { p_area: areaId });
+    if (error) throw error;
+    return Boolean(data);
   });
 }
 

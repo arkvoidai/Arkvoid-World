@@ -1,0 +1,36 @@
+name: Validate Arkvoid World
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - feat/world-atlas-streaming-mountains-water
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build production bundle
+        run: npm run build

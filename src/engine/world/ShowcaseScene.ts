@@ -23,6 +23,14 @@ import { WaterSystem } from '@/engine/world/Water';
 import { LifeSystem } from '@/engine/fx/Life';
 import { REVIEW_SHOTS } from '@/engine/world/reviewShots';
 import { SkyDome } from '@/engine/world/SkyDome';
+import { FarMountainRanges } from '@/engine/world/FarMountainRanges';
+import { DiscoveryTracker, discoverableAreaAt } from '@/engine/world/atlas';
+import { WeatherController } from '@/engine/world/sky/Weather';
+import { worldMinute } from '@/lib/worldClock';
+import { discoverArea, getAreas, getDiscoveredAreas } from '@/net/api';
+import { BUILT_AREAS } from '@/engine/world/atlas/Atlas';
+import { log } from '@/lib/log';
+import { WorldExpansionInspector } from '@/engine/world/atlas/AtlasInspector';
 import {
   createTimeOfDayState,
   type TimeOfDayState,
@@ -72,6 +80,10 @@ export class ShowcaseWorldSystem implements System {
   private sceneRef: THREE.Scene | null = null;
   private skyDome: SkyDome | null = null;
   private cloudSea: CloudSea | null = null;
+  private farMountains: FarMountainRanges | null = null;
+  private discoveryTracker: DiscoveryTracker | null = null;
+  private expansionInspector: WorldExpansionInspector | null = null;
+  private readonly weatherController = new WeatherController();
   private materialBank: WorldMaterialBank | null = null;
   private materialLibrary: MaterialLibrary | null = null;
   private sectArch: SectArchitectureInstance | null = null;
@@ -310,6 +322,27 @@ export class ShowcaseWorldSystem implements System {
 
     this.cloudSea = new CloudSea(ctx.device);
     ctx.scene.add(this.cloudSea.group);
+
+    // Distant non-walkable terrain frames the existing Home Reach without changing its collision.
+    this.farMountains = new FarMountainRanges(ctx.device.deviceClass === 'phone');
+    ctx.scene.add(this.farMountains);
+
+    // Load remote discoveries before dwell tracking so returning players are not rediscovered.
+    this.discoveryTracker = new DiscoveryTracker(3, [], false);
+    void getDiscoveredAreas().then((result) => {
+      if (result.ok) this.discoveryTracker?.seedDiscovered(result.data);
+      else this.discoveryTracker?.markReady();
+    }).catch(() => this.discoveryTracker?.markReady());
+
+    // Missing built Atlas rows are non-fatal and produce one diagnostic line.
+    void getAreas().then((result) => {
+      if (!result.ok) return;
+      const remoteIds = new Set(result.data.map((area) => area.id));
+      const missing = BUILT_AREAS.filter((area) => !remoteIds.has(area.id)).map((area) => area.id);
+      if (missing.length > 0) log.error('Built Atlas areas missing from Supabase:', missing.join(', '));
+    }).catch(() => log.error('Built Atlas area validation could not reach Supabase'));
+
+    this.expansionInspector = WorldExpansionInspector.create();
 
     // 2. Shared Material Bank
     this.materialBank = new WorldMaterialBank(ctx.device, ctx.assets);
@@ -743,6 +776,22 @@ export class ShowcaseWorldSystem implements System {
 
     const elapsed = ctx.clock.elapsed;
     const reduced = ctx.device.reducedMotion;
+    const worldDay = Math.floor(worldMinute() / 1440);
+    const weatherMinute = worldDay * 1440 + this.skyState.hour * 60;
+    const weather = this.weatherController.update('home-reach', weatherMinute, {
+      temperature: 0.55,
+      moisture: 0.64,
+      snowAllowed: false,
+    });
+    if (this.fog) this.fog.far = Math.max(150, 42000 / weather.fogMultiplier);
+    const debugPosition = this.playerController?.position ?? ctx.camera.position;
+    this.expansionInspector?.update(
+      debugPosition.x,
+      debugPosition.y,
+      debugPosition.z,
+      this.skyState.hour,
+      weather,
+    );
 
     this.lightRig?.update(
       dt,
@@ -765,7 +814,9 @@ export class ShowcaseWorldSystem implements System {
       );
     }
 
-    this.cloudSea?.update(this.skyState, elapsed, ctx.camera, reduced);
+    this.cloudSea?.update(this.skyState, elapsed, ctx.camera, reduced, weather);
+    this.farMountains?.syncSky(this.skyState);
+    this.farMountains?.update(elapsed);
     this.materialBank?.update(this.skyState, elapsed, reduced, force);
     this.materialBank?.updateTextures(ctx.assets);
     this.materialLibrary?.update();
@@ -811,6 +862,14 @@ export class ShowcaseWorldSystem implements System {
         z: pPos.z,
         ry: this.playerController.facing,
       });
+
+      const area = discoverableAreaAt(pPos.x, pPos.y, pPos.z);
+      const discoveredId = this.discoveryTracker?.update(dt, area?.id ?? null);
+      if (discoveredId) {
+        ctx.events.emit('discover', { areaId: discoveredId });
+        void discoverArea(discoveredId).catch(() => undefined);
+      }
+
       // Register player push point with GrassSystem via WindSystem
       this.wind?.setPushPoint(0, pPos.x, pPos.y, pPos.z, 0.95);
     }
@@ -885,8 +944,8 @@ export class ShowcaseWorldSystem implements System {
 
     if (this.fog) {
       this.fog.color.copy(this.skyState.fog);
-      this.fog.near = this.skyState.fogNear;
-      this.fog.far = this.skyState.fogFar;
+      this.fog.near = Math.max(900, this.skyState.fogNear * 9);
+      this.fog.far = 42000;
     }
   }
 
@@ -1081,6 +1140,16 @@ export class ShowcaseWorldSystem implements System {
       this.cloudSea.group.removeFromParent();
       this.cloudSea.dispose();
       this.cloudSea = null;
+    }
+    if (this.farMountains) {
+      this.farMountains.removeFromParent();
+      this.farMountains.dispose();
+      this.farMountains = null;
+    }
+    this.discoveryTracker = null;
+    if (this.expansionInspector) {
+      this.expansionInspector.dispose();
+      this.expansionInspector = null;
     }
     if (this.atmosphere) {
       this.atmosphere.dispose();
