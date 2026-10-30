@@ -21,9 +21,9 @@ export const TRAVEL_EDGES: readonly TravelEdge[] = [
   { ...makeEdge('bridge-ab', 'dawn-terrace', 'still-garden', 'bridge', ab.points[0]!, ab.points[ab.points.length - 1]!), length: ab.totalLengthXZ },
   { ...makeEdge('bridge-bc', 'still-garden', 'falls-of-light', 'bridge', bc.points[0]!, bc.points[bc.points.length - 1]!), length: bc.totalLengthXZ },
   makeEdge('sanctuary-skyway', 'falls-of-light', 'sanctuary', 'skyway', sanctuaryStart, sanctuaryEnd),
-  makeEdge('gate-veiled-peaks', 'dawn-terrace', 'veiled-peaks', 'gate', { x: 8, y: 0, z: -8 }, { x: 2400, y: 20, z: -3600 }, 'planned'),
-  makeEdge('gate-capital-valley', 'dawn-terrace', 'capital-valley', 'gate', { x: 8, y: 0, z: -8 }, { x: -5000, y: 40, z: -2400 }, 'planned'),
-  makeEdge('gate-primordial-forest', 'falls-of-light', 'primordial-forest', 'gate', { x: 30, y: 1, z: -52 }, { x: -1800, y: 30, z: 4200 }, 'planned'),
+  makeEdge('gate-veiled-peaks', 'dawn-terrace', 'veiled-peaks', 'gate', { x: -10, y: 0, z: -22 }, { x: 2400, y: 72, z: -3600 }),
+  makeEdge('gate-capital-valley', 'dawn-terrace', 'capital-valley', 'gate', { x: 0, y: 0, z: -27 }, { x: -5000, y: 48, z: -2400 }),
+  makeEdge('gate-primordial-forest', 'dawn-terrace', 'primordial-forest', 'gate', { x: 10, y: 0, z: -22 }, { x: -1800, y: 60, z: 4200 }),
   makeEdge('gate-astral-reach', 'sanctuary', 'astral-reach', 'gate', sanctuaryEnd, { x: 0, y: 4000, z: -9000 }, 'planned'),
   makeEdge('gate-deep-sanctuary', 'still-garden', 'deep-sanctuary', 'gate', { x: 60, y: -2, z: -8 }, { x: 4000, y: -300, z: 3000 }, 'planned'),
 ];

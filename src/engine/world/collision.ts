@@ -14,6 +14,7 @@ import {
   terrainGradient,
   terrainHeight,
 } from '@/engine/world/terrain';
+import { expandedRegionAt, expandedRegionHeightAt } from '@/engine/world/WorldRegions';
 
 export const EDGE_INSET = 0.8;
 export const MAX_STEP_UP = 0.4;
@@ -129,6 +130,7 @@ export function heightAt(
     }
   }
 
+  if (candidateY === null) candidateY = expandedRegionHeightAt(x, z);
   return candidateY;
 }
 
@@ -310,7 +312,21 @@ function clampToWalkableArea(
     }
   }
 
-  // 2. Otherwise find the nearest reachable island and slide along its curved superelliptic rim at t = 0.93
+  // 2. Expanded continents keep the player inside their own walkable perimeter.
+  const previousRegion = expandedRegionAt(prevX, prevZ);
+  if (previousRegion) {
+    const dx = targetX - previousRegion.center.x;
+    const dz = targetZ - previousRegion.center.z;
+    const angle = Math.atan2(dz, dx);
+    const radius = previousRegion.radius * 0.965;
+    return {
+      x: previousRegion.center.x + Math.cos(angle) * radius,
+      z: previousRegion.center.z + Math.sin(angle) * radius,
+      clamped: true,
+    };
+  }
+
+  // 3. Otherwise find the nearest reachable island and slide along its curved superelliptic rim at t = 0.93
   let nearestIsland: IslandDef = ISLANDS.A;
   let bestDist = Infinity;
   for (let i = 0; i < REACHABLE_ISLANDS.length; i++) {
@@ -390,7 +406,7 @@ export function resolveMove(
       candidateH - curY >= -0.05 &&
       candidateH - curY <= MAX_STEP_UP + 1e-4;
 
-    if (!onBridge) {
+    if (!onBridge && !expandedRegionAt(candidateX, candidateZ)) {
       const grad = terrainGradient(candidateX, candidateZ);
       if (grad.slopeDeg > MAX_SLOPE_DEG && !isStepUp) {
         // Check if player is moving uphill against steep slope

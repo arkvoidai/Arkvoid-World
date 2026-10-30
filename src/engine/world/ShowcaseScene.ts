@@ -24,6 +24,7 @@ import { LifeSystem } from '@/engine/fx/Life';
 import { REVIEW_SHOTS } from '@/engine/world/reviewShots';
 import { SkyDome } from '@/engine/world/SkyDome';
 import { FarMountainRanges } from '@/engine/world/FarMountainRanges';
+import { WorldRegions, EXPANDED_REGIONS, HOME_REGION_GATES } from '@/engine/world/WorldRegions';
 import { DiscoveryTracker, discoverableAreaAt } from '@/engine/world/atlas';
 import { WeatherController } from '@/engine/world/sky/Weather';
 import { worldMinute } from '@/lib/worldClock';
@@ -81,6 +82,7 @@ export class ShowcaseWorldSystem implements System {
   private skyDome: SkyDome | null = null;
   private cloudSea: CloudSea | null = null;
   private farMountains: FarMountainRanges | null = null;
+  private worldRegions: WorldRegions | null = null;
   private discoveryTracker: DiscoveryTracker | null = null;
   private expansionInspector: WorldExpansionInspector | null = null;
   private readonly weatherController = new WeatherController();
@@ -362,6 +364,8 @@ export class ShowcaseWorldSystem implements System {
 
     const islandKeys = ['A', 'B', 'C', 'S'] as const;
     const isPhone = ctx.device.deviceClass === 'phone';
+    this.worldRegions = new WorldRegions(isPhone);
+    this.worldGroup.add(this.worldRegions);
     for (const key of islandKeys) {
       const landform = new IslandLandformMesh(key, ctx.assets, {
         isPhone,
@@ -527,6 +531,44 @@ export class ShowcaseWorldSystem implements System {
         // Bell feedback
       },
     });
+
+    // Three distinct world gates connect Home Reach to three fully walkable continents.
+    for (const gate of HOME_REGION_GATES) {
+      const destination = EXPANDED_REGIONS.find((region) => region.id === gate.regionId);
+      if (!destination) continue;
+      this.interactables.register({
+        id: gate.id,
+        kind: 'gate',
+        position: new THREE.Vector3(gate.position.x, gate.position.y, gate.position.z),
+        radius: 5.4,
+        label: destination.name,
+        verb: 'Enter',
+        enabled: () => !this.playerController!.isLocked(),
+        onInteract: () => {
+          const x = destination.center.x - 115;
+          const z = destination.center.z + 125;
+          const y = heightAt(x, z) ?? destination.baseY;
+          this.playerController!.teleport(x, y, z, 0);
+          this.localPlayer?.setAnimationState('idle', 0.2);
+          ctx.events.emit('toast', { message: 'Arrived in ' + destination.name });
+        },
+      });
+      this.interactables.register({
+        id: 'return-' + gate.id,
+        kind: 'gate',
+        position: new THREE.Vector3(destination.center.x - 90, heightAt(destination.center.x - 90, destination.center.z + 110) ?? destination.baseY, destination.center.z + 110),
+        radius: 8.5,
+        label: 'the Home Reach gate',
+        verb: 'Return to',
+        enabled: () => !this.playerController!.isLocked(),
+        onInteract: () => {
+          const homeY = heightAt(0, 14) ?? 0;
+          this.playerController!.teleport(0, homeY, 14, Math.PI);
+          this.localPlayer?.setAnimationState('idle', 0.2);
+          ctx.events.emit('toast', { message: 'Returned to Home Reach' });
+        },
+      });
+    }
 
     const swingingBell = this.sectArch?.group.getObjectByName('SwingingBell');
     if (swingingBell) {
