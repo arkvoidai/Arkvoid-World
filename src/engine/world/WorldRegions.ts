@@ -139,6 +139,10 @@ function addInstancedForest(group: THREE.Group, region: ExpandedRegionDefinition
   }
   trunks.count = placed;
   crowns.count = placed;
+  trunks.instanceMatrix.needsUpdate = true;
+  crowns.instanceMatrix.needsUpdate = true;
+  trunks.computeBoundingSphere();
+  crowns.computeBoundingSphere();
   trunks.castShadow = true;
   crowns.castShadow = true;
   group.add(trunks, crowns);
@@ -201,7 +205,7 @@ function addCapitalLandmarks(group: THREE.Group, region: ExpandedRegionDefinitio
     new THREE.MeshStandardMaterial({ color: region.palette.water, roughness: 0.18, metalness: 0.12, transparent: true, opacity: 0.88 }),
   );
   river.rotation.x = -Math.PI / 2;
-  river.position.set(region.center.x, region.baseY + 1.8, region.center.z + 5);
+  river.position.set(region.center.x, region.baseY - 4.2, region.center.z + 5);
   group.add(river);
 }
 
