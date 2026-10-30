@@ -21,6 +21,7 @@ export const Field = forwardRef<HTMLInputElement, FieldProps>(function Field(
     onFocus,
     onBlur,
     onChange,
+    placeholder,
     className = '',
     ...rest
   },
@@ -87,6 +88,7 @@ export const Field = forwardRef<HTMLInputElement, FieldProps>(function Field(
           setInternalHasValue(e.currentTarget.value.length > 0);
           onChange?.(e);
         }}
+        placeholder={focused ? placeholder : undefined}
         className="h-full w-full bg-transparent px-4 pt-4 pb-1 text-body text-ink outline-none"
         {...rest}
       />

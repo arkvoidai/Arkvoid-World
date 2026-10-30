@@ -327,59 +327,59 @@ export class WandererAnimator {
       }
 
       case 'walk': {
-        // Walk: Stride 0.72m, bob 2.5cm, arm swing 15 deg (0.26 rad), hip counter-rotation
+        // Walk: short, measured stride with restrained upper-body motion
         const p = this.walkPhase * Math.PI * 2;
         const sinP = Math.sin(p);
-        const bob = Math.abs(sinP) * 0.025; // 2.5 cm bob
+        const bob = Math.abs(sinP) * 0.016; // 1.6 cm bob
 
         out.pelvisY = -bob;
-        out.pelvisRotY = -sinP * 0.12; // hip counter-rotation
-        out.chestRotY = sinP * 0.08;
+        out.pelvisRotY = -sinP * 0.07; // subtle hip counter-rotation
+        out.chestRotY = sinP * 0.045;
 
         // Arm swing (opposite to leg)
-        out.leftArmRotX = sinP * 0.26;
-        out.rightArmRotX = -sinP * 0.26;
-        out.leftForearmRotX = 0.15 + (sinP > 0 ? sinP * 0.15 : 0);
-        out.rightForearmRotX = 0.15 + (-sinP > 0 ? -sinP * 0.15 : 0);
+        out.leftArmRotX = sinP * 0.18;
+        out.rightArmRotX = -sinP * 0.18;
+        out.leftForearmRotX = 0.10 + (sinP > 0 ? sinP * 0.10 : 0);
+        out.rightForearmRotX = 0.10 + (-sinP > 0 ? -sinP * 0.10 : 0);
 
         // Legs
-        out.leftThighRotX = -sinP * 0.45;
-        out.rightThighRotX = sinP * 0.45;
-        out.leftShinRotX = sinP < 0 ? -sinP * 0.55 : 0;
-        out.rightShinRotX = sinP > 0 ? sinP * 0.55 : 0;
+        out.leftThighRotX = -sinP * 0.34;
+        out.rightThighRotX = sinP * 0.34;
+        out.leftShinRotX = sinP < 0 ? -sinP * 0.42 : 0;
+        out.rightShinRotX = sinP > 0 ? sinP * 0.42 : 0;
 
-        out.robeSpeedAmplitude = 0.5;
-        out.robeTrail = 0.12;
+        out.robeSpeedAmplitude = 0.32;
+        out.robeTrail = 0.08;
         break;
       }
 
       case 'run': {
-        // Run: Stride 1.1m, lean 9 deg (0.16 rad), arm swing 35 deg (0.61 rad), robe trail
+        // Run: grounded athletic stride with controlled torso and arm movement
         const p = this.walkPhase * Math.PI * 2;
         const sinP = Math.sin(p);
-        const bob = Math.abs(sinP) * 0.055; // 5.5 cm bob
+        const bob = Math.abs(sinP) * 0.026; // 2.6 cm bob
 
         out.pelvisY = -bob;
-        out.pelvisRotX = 0.16; // 9 deg forward lean
-        out.spine0RotX = 0.05;
-        out.spine1RotX = 0.05;
-        out.pelvisRotY = -sinP * 0.22;
-        out.chestRotY = sinP * 0.15;
+        out.pelvisRotX = 0.07; // restrained forward lean
+        out.spine0RotX = 0.025;
+        out.spine1RotX = 0.025;
+        out.pelvisRotY = -sinP * 0.14;
+        out.chestRotY = sinP * 0.08;
 
         // Arm swing 35 deg
-        out.leftArmRotX = sinP * 0.61;
-        out.rightArmRotX = -sinP * 0.61;
-        out.leftForearmRotX = 0.45 + (sinP > 0 ? sinP * 0.3 : 0);
-        out.rightForearmRotX = 0.45 + (-sinP > 0 ? -sinP * 0.3 : 0);
+        out.leftArmRotX = sinP * 0.34;
+        out.rightArmRotX = -sinP * 0.34;
+        out.leftForearmRotX = 0.24 + (sinP > 0 ? sinP * 0.18 : 0);
+        out.rightForearmRotX = 0.24 + (-sinP > 0 ? -sinP * 0.18 : 0);
 
         // Legs
-        out.leftThighRotX = -sinP * 0.75;
-        out.rightThighRotX = sinP * 0.75;
-        out.leftShinRotX = sinP < 0 ? -sinP * 0.95 : 0;
-        out.rightShinRotX = sinP > 0 ? sinP * 0.95 : 0;
+        out.leftThighRotX = -sinP * 0.52;
+        out.rightThighRotX = sinP * 0.52;
+        out.leftShinRotX = sinP < 0 ? -sinP * 0.68 : 0;
+        out.rightShinRotX = sinP > 0 ? sinP * 0.68 : 0;
 
-        out.robeSpeedAmplitude = 1.0;
-        out.robeTrail = 0.35;
+        out.robeSpeedAmplitude = 0.62;
+        out.robeTrail = 0.20;
         break;
       }
 

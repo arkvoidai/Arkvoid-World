@@ -40,10 +40,10 @@ export class PlayerController {
   // Physical constants
   readonly radius = 0.3; // m
   readonly height = 1.7; // m
-  readonly walkSpeed = 2.3; // m/s
-  readonly runSpeed = 4.8; // m/s
-  readonly acceleration = 12.0; // m/s2
-  readonly deceleration = 16.0; // m/s2
+  readonly walkSpeed = 2.0; // m/s
+  readonly runSpeed = 3.6; // m/s
+  readonly acceleration = 7.0; // m/s2
+  readonly deceleration = 12.0; // m/s2
 
   // Transform and kinematics
   readonly position = new THREE.Vector3();
@@ -57,6 +57,8 @@ export class PlayerController {
   // Smoothing state
   private smoothGroundY = 0;
   private currentSpeed = 0;
+  private lastMoveDirX = 0;
+  private lastMoveDirZ = -1;
 
   // State machine
   private state: LocomotionState = 'idle';
@@ -91,6 +93,8 @@ export class PlayerController {
     this.position.set(SPAWN.position.x, spawnY, SPAWN.position.z);
     this.facing = SPAWN.yaw;
     this.targetFacing = SPAWN.yaw;
+    this.lastMoveDirX = -Math.sin(SPAWN.yaw);
+    this.lastMoveDirZ = -Math.cos(SPAWN.yaw);
     this.smoothGroundY = spawnY;
 
     if (this.wanderer) {
@@ -113,6 +117,8 @@ export class PlayerController {
       this.facing = facing;
       this.targetFacing = facing;
     }
+    this.lastMoveDirX = -Math.sin(this.facing);
+    this.lastMoveDirZ = -Math.cos(this.facing);
     if (this.wanderer) {
       this.wanderer.position.copy(this.position);
       this.wanderer.rotation.y = this.facing;
@@ -213,8 +219,15 @@ export class PlayerController {
       if (len > 0.001) {
         moveDirX /= len;
         moveDirZ /= len;
+        this.lastMoveDirX = moveDirX;
+        this.lastMoveDirZ = moveDirZ;
         this.targetFacing = Math.atan2(-moveDirX, -moveDirZ);
       }
+    } else {
+      // Keep the last travel direction while decelerating. Zeroing the direction
+      // here made the avatar stop in one frame while its run animation continued.
+      moveDirX = this.lastMoveDirX;
+      moveDirZ = this.lastMoveDirZ;
     }
 
     // 2. Island edge proximity (t = 0.93)
@@ -242,8 +255,9 @@ export class PlayerController {
 
     // 4. Smooth Acceleration / Deceleration
     const accelRate = targetSpeed > this.currentSpeed ? this.acceleration : this.deceleration;
-    this.currentSpeed += (targetSpeed - this.currentSpeed) * Math.min(1.0, clampedDt * accelRate);
-    if (this.currentSpeed < 0.01) this.currentSpeed = 0;
+    const response = 1.0 - Math.exp(-clampedDt * accelRate);
+    this.currentSpeed += (targetSpeed - this.currentSpeed) * response;
+    if (this.currentSpeed < 0.015) this.currentSpeed = 0;
 
     this.velocity.x = moveDirX * this.currentSpeed;
     this.velocity.z = moveDirZ * this.currentSpeed;
@@ -251,7 +265,7 @@ export class PlayerController {
 
     // 5. Critically damped turn towards target facing
     // 0.12 s damping time (slower and smoother if assistedMovement is true)
-    const turnDamping = this.options.assistedMovement ? 0.22 : 0.12;
+    const turnDamping = this.options.assistedMovement ? 0.34 : 0.28;
     const angleDiff = Math.atan2(
       Math.sin(this.targetFacing - this.facing),
       Math.cos(this.targetFacing - this.facing),
@@ -290,7 +304,7 @@ export class PlayerController {
     this.surface = this.querySurface(this.position.x, this.position.z);
 
     // 8. State update
-    if (this.currentSpeed > 3.0) {
+    if (this.currentSpeed > 2.65) {
       this.setState('run');
     } else if (this.currentSpeed > 0.1) {
       this.setState('walk');

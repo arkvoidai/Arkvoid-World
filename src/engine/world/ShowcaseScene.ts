@@ -469,9 +469,12 @@ export class ShowcaseWorldSystem implements System {
         ctx.events.emit('toast', { message });
       },
     });
-    this.playerController.position.copy(initialPos);
-    this.playerController.facing = initialYaw;
-    this.playerController.targetFacing = initialYaw;
+    this.playerController.teleport(
+      initialPos.x,
+      initialPos.y,
+      initialPos.z,
+      initialYaw,
+    );
 
     this.inputManager = new InputManager(ctx.renderer.domElement, {
       assistedMovement: false,

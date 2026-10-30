@@ -470,7 +470,7 @@ export default function WorldHost({
   }, [actors, audit, benchmark, form, leaning, leakTest, probe, reviewShots, syncVignetteOverlay]);
 
   return (
-    <main className="relative h-full w-full overflow-hidden bg-[#1d1724] select-none">
+    <main className="relative h-full w-full overflow-hidden bg-[#fbfaf7] select-none">
       <div
         ref={hostRef}
         data-testid="world-canvas-host"

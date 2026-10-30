@@ -177,11 +177,18 @@ export function AwakeningScreen({ onAwakenComplete, error }: AwakeningScreenProp
             tabIndex={-1}
             className="font-serif text-2xl font-normal text-ink outline-none"
           >
-            Your name
+            Choose your name
           </h2>
+          <p className="-mt-2 text-sm leading-relaxed text-ink-3">
+            This is how people in Arkvoid will know you.
+          </p>
           <div className="flex flex-col gap-2">
             <Field
               label="Wanderer name"
+              placeholder="e.g. Aeron"
+              autoComplete="nickname"
+              enterKeyHint="done"
+              maxLength={20}
               value={name}
               onChange={(e) => {
                 setName(e.target.value);

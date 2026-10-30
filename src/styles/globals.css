@@ -97,7 +97,7 @@ body,
   min-height: 100dvh;
   margin: 0;
   padding: 0;
-  background-color: #1d1724;
+  background-color: #fbfaf7;
   color: var(--color-ink);
   font-family:
     'Geist Variable',
@@ -153,11 +153,11 @@ body,
   min-height: 100dvh;
   place-items: center;
   overflow: hidden;
-  color: #f6f0e9;
+  color: #26231e;
   background:
-    radial-gradient(circle at 50% 43%, rgba(202, 130, 100, 0.16), transparent 38%),
-    radial-gradient(circle at 16% 84%, rgba(120, 83, 117, 0.14), transparent 40%),
-    linear-gradient(155deg, #251d2d 0%, #1d1724 58%, #17131d 100%);
+    radial-gradient(circle at 50% 44%, rgba(219, 196, 169, 0.16) 0%, transparent 38%),
+    radial-gradient(circle at 18% 82%, rgba(224, 219, 208, 0.16) 0%, transparent 42%),
+    linear-gradient(155deg, #fffefa 0%, #f8f6f1 56%, #f0eee8 100%);
 }
 .arkvoid-loading-content {
   display: flex;
@@ -169,74 +169,74 @@ body,
 .arkvoid-loader-orbit {
   position: relative;
   display: grid;
-  width: 64px;
-  height: 64px;
+  width: 58px;
+  height: 58px;
   margin-bottom: 8px;
   place-items: center;
-  border: 1px solid rgba(244, 222, 202, 0.14);
+  border: 1px solid rgba(54, 49, 41, 0.12);
   border-radius: 50%;
 }
 .arkvoid-loader-orbit::before,
 .arkvoid-loader-orbit::after {
   position: absolute;
-  inset: 6px;
+  inset: 5px;
   border: 1px solid transparent;
-  border-top-color: rgba(246, 192, 145, 0.9);
-  border-right-color: rgba(246, 192, 145, 0.24);
+  border-top-color: rgba(151, 125, 91, 0.78);
+  border-right-color: rgba(151, 125, 91, 0.18);
   border-radius: 50%;
   content: "";
-  animation: arkvoid-orbit 2.4s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+  animation: arkvoid-orbit 3.8s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
 }
 .arkvoid-loader-orbit::after {
-  inset: 14px;
-  border-top-color: rgba(241, 216, 194, 0.46);
+  inset: 12px;
+  border-top-color: rgba(93, 88, 78, 0.34);
   border-right-color: transparent;
-  animation-duration: 3.6s;
+  animation-duration: 5.4s;
   animation-direction: reverse;
 }
 .arkvoid-loader-core {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: #f2b17c;
-  box-shadow: 0 0 18px rgba(242, 177, 124, 0.72);
-  animation: arkvoid-core-pulse 2.2s ease-in-out infinite;
+  background: #ad8b63;
+  box-shadow: 0 0 12px rgba(173, 139, 99, 0.28);
+  animation: arkvoid-core-pulse 2.8s ease-in-out infinite;
 }
 .arkvoid-loading-wordmark {
   padding-left: 0.34em;
-  color: rgba(250, 243, 235, 0.9);
+  color: rgba(38, 35, 30, 0.84);
   font-family: 'Geist Variable', sans-serif;
-  font-size: 12px;
-  font-weight: 400;
+  font-size: 11px;
+  font-weight: 500;
   letter-spacing: 0.34em;
 }
 .arkvoid-loading-caption {
-  color: rgba(250, 243, 235, 0.62);
+  color: rgba(58, 54, 47, 0.55);
   font-size: 12px;
   letter-spacing: 0.025em;
 }
 .arkvoid-loading-track {
-  width: 88px;
-  height: 2px;
+  width: 76px;
+  height: 1px;
   margin-top: 8px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(246, 240, 233, 0.12);
+  background: rgba(61, 55, 46, 0.11);
 }
 .arkvoid-loading-track span {
   display: block;
   width: 42%;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #d88769, #f4c28e);
-  animation: arkvoid-loading-sweep 1.65s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  background: linear-gradient(90deg, #a88965, #d6c2a5);
+  animation: arkvoid-loading-sweep 2.1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 @keyframes arkvoid-orbit {
   to { transform: rotate(360deg); }
 }
 @keyframes arkvoid-core-pulse {
-  0%, 100% { opacity: 0.72; transform: scale(0.86); }
-  50% { opacity: 1; transform: scale(1.1); }
+  0%, 100% { opacity: 0.72; transform: scale(0.92); }
+  50% { opacity: 1; transform: scale(1.04); }
 }
 @keyframes arkvoid-loading-sweep {
   0% { transform: translateX(-110%); }
