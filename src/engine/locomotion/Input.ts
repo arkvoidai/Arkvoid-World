@@ -49,8 +49,9 @@ export function normalizeTouchStick(
   const remapped = (magnitude - deadzone) / (1 - deadzone);
   const strength = Math.pow(remapped, 1.15);
   return {
-    moveX: (dx / distance) * strength,
-    moveY: -(dy / distance) * strength,
+    // Canonicalize zero so axis-aligned vectors never leak -0 into state/tests.
+    moveX: dx === 0 ? 0 : (dx / distance) * strength,
+    moveY: dy === 0 ? 0 : -(dy / distance) * strength,
     knobX,
     knobY,
     magnitude,
@@ -612,7 +613,9 @@ export class InputManager {
     if (this.controlsContainer?.parentNode) {
       this.controlsContainer.parentNode.removeChild(this.controlsContainer);
     }
-    this.targetElement.style.touchAction = this.originalTouchAction;
+    if (this.targetElement.style) {
+      this.targetElement.style.touchAction = this.originalTouchAction;
+    }
   }
 }
 
