@@ -242,6 +242,45 @@
   - Built documentation: `docs/DATA_CONTRACT.md` and `docs/SECURITY_TESTS.md` (manual recipes a–g with exact `window.__ark` console snippets).
   - Built unit tests in `src/net/step14.test.ts` (66 total tests passing).
 
+- **Step 15 (Entry, Awakening and Arrival)**:
+  - Built `src/screens/GateOverlay.tsx`:
+    - Renders over the live 3D world in showcase orbit mode at golden hour (`18.3`).
+    - Responsive layout: bottom-centred card on mobile, left-centre floating panel on desktop.
+    - Logo lockup (`variant="lockup"`), world name "Celestial Frontier" in Instrument Serif italic, primary light Button "Begin", quiet text button "I have an account", tiny mono label "EARLY PREVIEW", footer links for Privacy and Terms opening placeholder sheets.
+    - "Begin" signs in anonymously via guest auth; "I have an account" opens `AccountSheet`. On account resolution, checks for character: if character exists -> shortened arrival rail (5 s); if none -> Awakening.
+  - Built `src/screens/AwakeningScreen.tsx`:
+    - Three-step character creation with live 3D world figure updates:
+      - Step 1 "Your name": Live validation matching server rules (starts with letter; 2 to 20 chars; spaces, `'`, `-` allowed; banned marketing and admin words blocked with "Please choose another name.").
+      - Step 2 "Your Leaning": Three cards for Dawn ("Quick to rise."), Dusk ("Slow to settle."), and Still ("Even at all hours."). Live sky hour transition (Dawn -> 6.5, Dusk -> 18.3, Still -> 12.0) with 1.5 s ease; updates preview figure robe colors and eye glow; active state indicated by thin Aurora gradient hairline and small dot.
+      - Step 3 "Your form": Four silhouettes (Traveller, Scholar, Warden, Sage) rendered to offscreen 256 px cached WebGL target; large preview figure in 3D scene rotates slowly (14 s full turn); summary line in Instrument Serif italic: `"You are {name}, of the {Leaning} Leaning."`.
+      - Final "Awaken" action: calls `create_character(name, leaning, form)`, preview figure eyes brighten, ground pulse ring expands across island (or gentle fade on reduced motion), sky hour eases to real clock over 4 s, transitions into arrival rail.
+      - Keyboard accessible (Enter to advance, Esc to go back, Tab, radio group semantics), focus management moving to step headings, reduced motion support.
+      - Responsive layout: floating left panel on desktop with figure on right; medium detent sheet on mobile ensuring the preview figure above is never obscured.
+  - Built `src/ui/thumbnailRenderer.ts`:
+    - Dedicated offscreen 256x256 WebGL renderer for Wanderer form silhouettes with module-level data URL caching and idle prewarming.
+  - Built `src/screens/ArrivalOverlay.tsx`:
+    - Cinematic arrival banner over arrival camera rail: displays world name "Dawn Terrace" in Instrument Serif italic with current world hour mono label. Fades smoothly after 4 seconds.
+    - Tap, spacebar, Enter, or Escape triggers instant skip to 0.8 s blend into world view.
+  - Built `src/hud/GuideWisp.tsx`:
+    - First-run guidance without text walls: gentle glowing pearl wisp beacon drifting toward the Grand Stair of the Main Hall (`x ~ 2.08, z ~ -6.0`), dissolving once the player approaches.
+  - Upgraded `src/engine/actors/Wanderer.ts`:
+    - Added `setFormAndLeaning(form, leaning)` for live mutable form and robe color updates, and `brightenEyes(brighten)`.
+  - Upgraded `src/engine/core/CameraRail.ts`:
+    - Added custom duration override support to `play()` (enabling 5 s shortened arrival for returning players vs 9 s for new arrivals) and instant `skipToEnd()` method.
+  - Upgraded `src/engine/locomotion/Input.ts`:
+    - Added first-touch 3 s gentle pulse hint on touch joystick.
+  - Upgraded `src/engine/world/ShowcaseScene.ts`:
+    - Implemented preview Wanderer at spirit pond pedestal (`-7.5, 0.05, -3.8`), ground pulse ring mesh, smooth hour transitions (1.5 s ease in gate/awakening, 4 s transition to real hour in arrival), 14 s slow preview rotation in Step 3, view mode camera framing for pedestal view, and input locking during non-world states.
+  - Upgraded `src/app/WorldHost.tsx`:
+    - Central state machine routing: `boot` -> `gate` | `awakening` | `arrival` -> `world`.
+  - Built unit test suite `src/engine/world/step15.test.ts` (72 total tests passing).
+  - Fixed Begin Button Issue (Mobile / Unconfigured Environment):
+    - Root cause: `signInGuest()` previously halted with a validation error when Supabase was unconfigured or when anonymous auth failed; `handleBegin` in `WorldHost.tsx` lacked fallback routing, causing the Gate screen to stay silently unresponsive; missing Tailwind tokens (`surface`, `muted`) left the card background un-styled over the 3D scene.
+    - Fix: Added resilient local guest fallback in `src/state/auth.ts`, complete local preview data layer fallbacks in `src/net/api.ts`, guaranteed Awakening transition in `WorldHost.tsx` `handleBegin`, high-legibility frosted white glass card styling (`bg-white/92 backdrop-blur-md shadow-violet-layered`) in `GateOverlay.tsx`, and verified with 72 passing tests.
+  - Fixed Mobile Keyboard Glitch & Viewport Height Jitter:
+    - Root cause: `AwakeningScreen.tsx` had `autoFocus` on the Name input on mount; `Sheet.tsx` had a 30ms `focusTimer` targeting `focusables[0]` which matched the drag handle button, immediately stealing focus from the active input; dynamic viewport `dvh` accompanied by a `320ms` CSS height transition in `Sheet.tsx` caused Android Chrome's virtual keyboard to enter a continuous open/close resize loop.
+    - Fix: Added `interactive-widget=overlays-content` to `index.html` viewport meta; removed `autoFocus` so the keyboard opens calmly on deliberate user tap; updated `Sheet.tsx` with `isInputFocused` state that locks sheet height with `transition: 'none'` and `drag={false}` during typing; updated `focusTimer` to never steal focus from active inputs or force focus on touch screens; added `tabIndex={-1}` on drag handle.
+
 ## Decisions
 - Locomotion, player kinematics, camera rig, and candidate evaluation run entirely on CPU with zero memory allocations in the frame tick path.
 - The camera rig uses purely analytic collision sampling across 8 points rather than raycasting meshes, guaranteeing instantaneous response under 0.15 ms on phones and eliminating frame hitching.
@@ -257,8 +296,11 @@
 - All database mutation operations are strictly routed through authenticated Supabase RPC functions; direct client INSERT/UPDATE/DELETE queries are blocked by RLS policies.
 - Network API calls enforce an 8-second timeout with at most one automatic retry with 400 ms backoff on network failures only, guaranteeing that UI callers never receive unhandled exceptions.
 - Position saving operates asynchronously on a background throttle (every 8 s while moving, immediately upon crossing island area bounds), strictly queued until `away_report()` has finished to maintain accurate offline progress accounting.
+- Gate, Awakening, and Arrival are rendered directly over the continuous live 3D WebGL world canvas with zero page reloads, preserving WebGL context and maintaining living atmosphere (petals, wind, lighting) behind all UI sheets and cards.
+- The Awakening preview Wanderer is placed on a pedestal spot beside the Spirit Pond (`-7.5, 0.05, -3.8`); on mobile, the camera frames the figure in the upper viewport while the Sheet occupies the lower half at medium detent (58dvh), ensuring the 3D figure is never obscured.
+- Form thumbnails are rendered to a dedicated 256x256 WebGL offscreen buffer and cached in memory as data URLs, prewarmed during Step 1 idle time to eliminate UI frame drops during Step 3 selection.
+- Preview and Guest Fallback Law: When remote Supabase credentials are not yet configured or when remote auth temporarily fails, the client seamlessly establishes a local guest session and simulates database mechanics identically so that visitors and reviewers are never blocked from entering Awakening or walking through the world.
 
 ## Known issues
 - PNG icon binaries (`icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon-180.png`) under `public/icons/` must be supplied by the founder as documented in `public/icons/README.md`; `public/icons/favicon.svg` is active now.
-
 

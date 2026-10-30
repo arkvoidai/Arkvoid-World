@@ -1,8 +1,7 @@
-import { Component, Suspense, lazy, useEffect, useState, type ErrorInfo, type ReactNode } from 'react';
+import { Component, Suspense, lazy, useState, type ErrorInfo, type ReactNode } from 'react';
 import { getMissingPublicConfig } from '@/config/public';
 import { SetupScreen } from '@/screens/SetupScreen';
 import { Logo } from '@/ui/Logo';
-import { bootstrapSession } from '@/app/bootstrap';
 import { AccountSheet } from '@/ui/AccountSheet';
 import { useAuthStore } from '@/state/auth';
 
@@ -103,12 +102,6 @@ export default function App() {
 
   const [accountOpen, setAccountOpen] = useState(() => Boolean(params?.get('account') === '1'));
   const sessionFailedMessage = useAuthStore((s) => s.sessionFailedMessage);
-
-  useEffect(() => {
-    bootstrapSession().catch((err) => {
-      console.warn('Arkvoid bootstrap error:', err);
-    });
-  }, []);
 
   const showKit = Boolean(params?.get('kit') === '1' && DesignKitScreen);
   if (showKit && DesignKitScreen) {

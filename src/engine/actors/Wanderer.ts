@@ -48,8 +48,8 @@ export class SpringLink {
 }
 
 export class Wanderer extends THREE.Group {
-  readonly form: FormId;
-  readonly leaning: LeaningId;
+  form: FormId;
+  leaning: LeaningId;
   readonly resident?: ResidentId;
   readonly skeleton: WandererSkeleton;
   readonly animator: WandererAnimator;
@@ -803,6 +803,45 @@ export class Wanderer extends THREE.Group {
 
   setSpeechLevel(level: number): void {
     this.animator.speechLevel = THREE.MathUtils.clamp(level, 0, 1);
+  }
+
+  setFormAndLeaning(form: FormId, leaning: LeaningId): void {
+    this.form = form;
+    this.leaning = leaning;
+
+    // Update height scale based on form
+    const hScale = form === 2 ? 1.80 / 1.72 : form === 3 ? 1.62 / 1.72 : 1.0;
+    this.skeleton.root.scale.set(hScale, hScale, hScale);
+
+    // Update materials: robe and sleeves
+    const newRobeMat = this.materials.getFabricMaterial(leaning, false);
+    if (this.robeMesh) {
+      this.robeMesh.material = newRobeMat;
+      this.robeMaterial = newRobeMat;
+    }
+
+    // Rebuild sleeves and sash
+    if (this.leftSleeveGroup) this.leftSleeveGroup.removeFromParent();
+    if (this.rightSleeveGroup) this.rightSleeveGroup.removeFromParent();
+    if (this.sashGroup) this.sashGroup.removeFromParent();
+    this.buildSleeves();
+    this.buildSash();
+
+    // Rebuild head accessories
+    if (this.hatMesh) { this.hatMesh.removeFromParent(); this.hatMesh = undefined; }
+    if (this.veilMesh) { this.veilMesh.removeFromParent(); this.veilMesh = undefined; }
+    if (this.satchelMesh) { this.satchelMesh.removeFromParent(); this.satchelMesh = undefined; }
+    if (this.mantleMesh) { this.mantleMesh.removeFromParent(); this.mantleMesh = undefined; }
+    if (this.maskMesh) { this.maskMesh.removeFromParent(); this.maskMesh = undefined; }
+    if (this.hairMesh) { this.hairMesh.removeFromParent(); this.hairMesh = undefined; }
+    if (this.eyeGroup) this.eyeGroup.removeFromParent();
+    this.buildHeadAndAccessories();
+  }
+
+  brightenEyes(brighten = true): void {
+    const scale = brighten ? 2.2 : 1.0;
+    this.leftEyeMesh.scale.set(scale, scale, 1.0);
+    this.rightEyeMesh.scale.set(scale, scale, 1.0);
   }
 
   // Three.js r186 Object3D/Group has dispose()

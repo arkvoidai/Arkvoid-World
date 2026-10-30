@@ -29,6 +29,15 @@ import ActorsLineupOverlay from '@/hud/ActorsLineupOverlay';
 import type { FormId, LeaningId } from '@/engine/actors/WandererMaterials';
 import type { AnimationStateName } from '@/engine/actors/Animator';
 
+import { GateOverlay } from '@/screens/GateOverlay';
+import { AwakeningScreen } from '@/screens/AwakeningScreen';
+import { ArrivalOverlay } from '@/screens/ArrivalOverlay';
+import { GuideWisp } from '@/hud/GuideWisp';
+import { useAuthStore } from '@/state/auth';
+import { useGameStore } from '@/state/game';
+import { bootstrapSession } from '@/app/bootstrap';
+import type { Leaning } from '@/net/api';
+
 const VisualReviewOverlay =
   import.meta.env.DEV || import.meta.env.VITE_ENABLE_REVIEW === '1'
     ? lazy(() => import('@/hud/VisualReviewOverlay'))
@@ -47,6 +56,8 @@ declare global {
   }
 }
 
+export type WorldViewMode = 'boot' | 'gate' | 'awakening' | 'arrival' | 'world';
+
 export interface WorldHostProps {
   debug?: boolean;
   probe?: boolean;
@@ -58,6 +69,7 @@ export interface WorldHostProps {
   actors?: boolean;
   form?: string;
   leaning?: string;
+  initialMode?: WorldViewMode;
 }
 
 export default function WorldHost({
@@ -71,6 +83,7 @@ export default function WorldHost({
   actors = false,
   form,
   leaning,
+  initialMode,
 }: WorldHostProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const vignetteRef = useRef<HTMLDivElement | null>(null);
@@ -82,6 +95,163 @@ export default function WorldHost({
   const [benchmarkReport, setBenchmarkReport] = useState<BenchmarkReport | null>(null);
   const [auditResult, setAuditResult] = useState<SceneAuditResult | null>(null);
   const prompt = useWorldBridgeStore((s) => s.prompt);
+  const playerCoarse = useWorldBridgeStore((s) => s.playerCoarse);
+
+  const [viewMode, setViewMode] = useState<WorldViewMode>(() => {
+    if (initialMode) return initialMode;
+    if (benchmark || leakTest || reviewShots || actors || audit || probe || debug) {
+      return 'world';
+    }
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const modeParam = params.get('mode') as WorldViewMode | null;
+      if (modeParam && ['gate', 'awakening', 'arrival', 'world'].includes(modeParam)) {
+        return modeParam;
+      }
+      if (params.get('walk') === '1') {
+        return 'world';
+      }
+    }
+    return 'boot';
+  });
+
+  const [isBeginning, setIsBeginning] = useState(false);
+  const [awakeningError, setAwakeningError] = useState<string | null>(null);
+  const [hallReached, setHallReached] = useState(false);
+
+  // Bootstrap session and route to gate, awakening, or arrival
+  useEffect(() => {
+    if (viewMode !== 'boot') {
+      if (viewMode === 'gate' || viewMode === 'awakening') {
+        sharedEngineBridge.enqueue({ type: 'setViewMode', mode: viewMode });
+      }
+      return;
+    }
+
+    let cancelled = false;
+
+    bootstrapSession()
+      .then((outcome) => {
+        if (cancelled) return;
+        if (outcome.type === 'NO_SESSION') {
+          setViewMode('gate');
+          sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'gate' });
+        } else {
+          if (outcome.hasCharacter) {
+            // Returning user: 5s arrival rail, then world
+            setViewMode('arrival');
+            sharedEngineBridge.enqueue({
+              type: 'playArrivalRail',
+              duration: 5.0,
+              onDone: () => {
+                if (!cancelled) setViewMode('world');
+              },
+            });
+          } else {
+            // Session without character: awakening
+            setViewMode('awakening');
+            sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Bootstrap error:', err);
+        if (!cancelled) {
+          setViewMode('gate');
+          sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'gate' });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [viewMode]);
+
+  // Subscribe to auth state: on sign-out reset to gate
+  useEffect(() => {
+    const unsub = useAuthStore.subscribe((state, prevState) => {
+      if (state.status === 'signed-out' && prevState.status !== 'signed-out') {
+        useGameStore.getState().resetGame();
+        setViewMode('gate');
+        sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'gate' });
+      }
+    });
+    return unsub;
+  }, []);
+
+  const handleBegin = useCallback(async () => {
+    setIsBeginning(true);
+    try {
+      const ok = await useAuthStore.getState().signInGuest();
+      if (ok) {
+        const hasChar = await useGameStore.getState().loadInitialGameData();
+        if (hasChar) {
+          setViewMode('arrival');
+          sharedEngineBridge.enqueue({
+            type: 'playArrivalRail',
+            duration: 5.0,
+            onDone: () => setViewMode('world'),
+          });
+        } else {
+          setViewMode('awakening');
+          sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
+        }
+      } else {
+        // Fallback: if guest sign-in returned false, transition to awakening
+        setViewMode('awakening');
+        sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
+      }
+    } catch (err) {
+      console.warn('[Arkvoid] Begin action error, transitioning to Awakening:', err);
+      setViewMode('awakening');
+      sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
+    } finally {
+      setIsBeginning(false);
+    }
+  }, []);
+
+  const handleAccountResolved = useCallback(async () => {
+    const authStatus = useAuthStore.getState().status;
+    if (authStatus === 'guest' || authStatus === 'member') {
+      const hasChar = await useGameStore.getState().loadInitialGameData();
+      if (hasChar) {
+        setViewMode('arrival');
+        sharedEngineBridge.enqueue({
+          type: 'playArrivalRail',
+          duration: 5.0,
+          onDone: () => setViewMode('world'),
+        });
+      } else {
+        setViewMode('awakening');
+        sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
+      }
+    }
+  }, []);
+
+  const handleAwakenComplete = useCallback(
+    async (name: string, leaning: Leaning, form: FormId): Promise<boolean> => {
+      setAwakeningError(null);
+      const ok = await useGameStore.getState().createCharacter(name, leaning, form);
+      if (ok) {
+        setViewMode('arrival');
+        sharedEngineBridge.enqueue({
+          type: 'playArrivalRail',
+          duration: 9.0,
+          onDone: () => setViewMode('world'),
+        });
+        return true;
+      } else {
+        setAwakeningError(useGameStore.getState().error || 'Please choose another name.');
+        return false;
+      }
+    },
+    [],
+  );
+
+  const handleSkipArrival = useCallback(() => {
+    sharedEngineBridge.enqueue({ type: 'skipArrivalRail' });
+    setViewMode('world');
+  }, []);
 
   const syncVignetteOverlay = useCallback(() => {
     const el = vignetteRef.current;
@@ -331,8 +501,38 @@ export default function WorldHost({
         </aside>
       )}
 
-      {/* Contextual Action Pill */}
-      {prompt && (
+      {/* Step 15 Gate Overlay: Welcome over live showcase world */}
+      {viewMode === 'gate' && firstFrameReady && (
+        <GateOverlay
+          onBegin={handleBegin}
+          onAccountResolved={handleAccountResolved}
+          isLoading={isBeginning}
+        />
+      )}
+
+      {/* Step 15 Awakening Screen: 3D character creation */}
+      {viewMode === 'awakening' && firstFrameReady && (
+        <AwakeningScreen
+          onAwakenComplete={handleAwakenComplete}
+          error={awakeningError}
+        />
+      )}
+
+      {/* Step 15 Arrival Overlay: Camera rail arrival banner */}
+      {viewMode === 'arrival' && (
+        <ArrivalOverlay onSkip={handleSkipArrival} />
+      )}
+
+      {/* Step 15 First-Run Guidance: Glowing guide wisp toward hall stair */}
+      {viewMode === 'world' && !hallReached && (
+        <GuideWisp
+          playerPos={playerCoarse}
+          onHallReached={() => setHallReached(true)}
+        />
+      )}
+
+      {/* Contextual Action Pill (world mode only) */}
+      {prompt && viewMode === 'world' && (
         <div
           data-testid="world-context-pill"
           className="pointer-events-auto fixed bottom-8 left-1/2 -translate-x-1/2 z-overlay transition-all duration-150 animate-fade-in"

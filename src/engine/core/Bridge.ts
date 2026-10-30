@@ -38,7 +38,12 @@ export type EngineCommand =
   | { type: 'setTimeSpeed'; speed: number }
   | { type: 'setPostProcessing'; enabled: boolean }
   | { type: 'setReviewShot'; shotIndex: number | null }
-  | { type: 'triggerInteract' };
+  | { type: 'triggerInteract' }
+  | { type: 'setViewMode'; mode: 'gate' | 'awakening' | 'arrival' | 'world' }
+  | { type: 'playArrivalRail'; duration?: number; onDone?: () => void }
+  | { type: 'skipArrivalRail' }
+  | { type: 'triggerAwakenPulse' }
+  | { type: 'setPreviewFigure'; leaning: 'dawn' | 'dusk' | 'still'; form: 0 | 1 | 2 | 3 };
 
 
 export type SnapshotSubscriber = (snapshot: Readonly<BridgeSnapshot>) => void;

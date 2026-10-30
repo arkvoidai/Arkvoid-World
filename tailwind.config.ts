@@ -40,6 +40,8 @@ const config: Config = {
         lavender: '#B9A6FF',
         gold: '#D8A24A',
         danger: '#C8553D',
+        surface: 'rgba(255, 255, 255, 0.92)',
+        muted: '#8A8598',
       },
       borderRadius: {
         field: '14px',
@@ -47,6 +49,7 @@ const config: Config = {
         sheet: '28px',
         panel: '28px',
         full: '9999px',
+        pill: '9999px',
       },
       boxShadow: {
         'violet-soft':
@@ -55,6 +58,11 @@ const config: Config = {
           '0 1px 2px rgba(60, 40, 120, 0.06), 0 8px 24px rgba(60, 40, 120, 0.08), 0 24px 64px rgba(60, 40, 120, 0.10)',
         'orange-light':
           '0 1px 2px rgba(60, 40, 120, 0.05), 0 8px 24px rgba(255, 122, 26, 0.30), 0 20px 48px rgba(124, 92, 255, 0.16)',
+        glass:
+          '0 1px 2px rgba(60, 40, 120, 0.04), 0 8px 24px rgba(60, 40, 120, 0.08), 0 20px 48px rgba(60, 40, 120, 0.06)',
+      },
+      backdropBlur: {
+        glass: '20px',
       },
       backgroundImage: {
         aurora:

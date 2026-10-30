@@ -218,15 +218,95 @@ async function executeWithRetry<T>(operation: () => Promise<T>): Promise<Result<
   return err(lastError ?? createAppError('UNKNOWN'));
 }
 
-// -------------------------------------------------------------
-// Player RPC Functions
-// -------------------------------------------------------------
+const LOCAL_STORAGE_KEY_CHAR = 'arkvoid.character';
+let inMemoryChar: Character | null = null;
+let inMemoryRetreat: string | null = null;
+
+function getLocalChar(): Character | null {
+  if (inMemoryChar) return inMemoryChar;
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY_CHAR);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveLocalChar(char: Character): void {
+  inMemoryChar = char;
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(LOCAL_STORAGE_KEY_CHAR, JSON.stringify(char));
+  } catch {
+    // Storage access may be restricted
+  }
+}
+
+const DEFAULT_NPCS: Npc[] = [
+  {
+    id: 'hale',
+    name: 'Hale',
+    role: 'Guide',
+    persona: 'Calm elder watching over the Spirit Pond.',
+    schedule: [{ from: 0, to: 24, area: 'dawn-terrace', spot: 'pavilion', act: 'watching water' }],
+  },
+  {
+    id: 'kael',
+    name: 'Kael',
+    role: 'Scholar',
+    persona: 'Keeper of records in the Archive.',
+    schedule: [{ from: 0, to: 24, area: 'still-garden', spot: 'archive', act: 'reading scrolls' }],
+  },
+  {
+    id: 'mira',
+    name: 'Mira',
+    role: 'Warden',
+    persona: 'Silent watcher at the Bell Tower.',
+    schedule: [{ from: 0, to: 24, area: 'dawn-terrace', spot: 'bell', act: 'listening to wind' }],
+  },
+];
+
+const DEFAULT_QUEST_DEFS: QuestDef[] = [
+  {
+    id: 'quest-first-steps',
+    title: 'First Steps',
+    giver: 'hale',
+    steps: [{ desc: 'Speak with Hale at the Pavilion' }],
+    reward_dawn: 15,
+    reward_dusk: 15,
+  },
+];
 
 export async function createCharacter(
   name: string,
   leaning: Leaning,
   form: FormId,
 ): Promise<Result<Character>> {
+  if (!hasSupabase()) {
+    const trimmed = name.trim();
+    if (!/^[A-Za-z][A-Za-z\s'-]{1,19}$/.test(trimmed)) {
+      return err(createAppError('VALIDATION', 'Choose a name between 2 and 20 characters.'));
+    }
+    const char: Character = {
+      user_id: 'guest-local',
+      name: trimmed,
+      leaning,
+      form,
+      realm: 1,
+      stage: 1,
+      dawn: 0,
+      dusk: 0,
+      area: 'dawn-terrace',
+      pos: { x: 0, y: 0, z: 14, ry: 0 },
+      last_gather: null,
+      last_seen: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+    };
+    saveLocalChar(char);
+    return ok(char);
+  }
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     const { data, error } = await supabase.rpc('create_character', {
@@ -241,8 +321,39 @@ export async function createCharacter(
 
 export async function gather(
   kind: 'dawn' | 'dusk',
-  quality: 0 | 1 | 2 | 3,
+  quality: 0 | 1 | 2 | 3 = 0,
 ): Promise<Result<GatherResponse>> {
+  if (!hasSupabase()) {
+    const char = getLocalChar();
+    if (!char) return err(createAppError('VALIDATION', 'no_character'));
+    const hour = (Date.now() / 3600000) % 24;
+    const isDawnWin = hour >= 5 && hour < 8;
+    const isDuskWin = hour >= 17 && hour < 20;
+    let mult = 1.0;
+    if (kind === 'dawn' && isDawnWin) mult *= 3.0;
+    if (kind === 'dusk' && isDuskWin) mult *= 3.0;
+    if (char.leaning === kind) mult *= 1.25;
+
+    const base = (quality + 1) * 3;
+    const gain = Math.max(1, Math.round(base * mult));
+    const cap = 40 + 30 * char.stage + 80 * (char.realm - 1);
+    if (kind === 'dawn') {
+      char.dawn = Math.min(cap, char.dawn + gain);
+    } else {
+      char.dusk = Math.min(cap, char.dusk + gain);
+    }
+    char.last_gather = new Date().toISOString();
+    saveLocalChar(char);
+    return ok({
+      status: 'ok',
+      kind,
+      gain,
+      in_window: mult > 1.25,
+      dawn: char.dawn,
+      dusk: char.dusk,
+      cap,
+    });
+  }
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     const { data, error } = await supabase.rpc('gather', {
@@ -255,6 +366,25 @@ export async function gather(
 }
 
 export async function attemptBreakthrough(): Promise<Result<BreakthroughResponse>> {
+  if (!hasSupabase()) {
+    const char = getLocalChar();
+    if (!char) return err(createAppError('VALIDATION', 'no_character'));
+    const need = 40 + 30 * char.stage + 80 * (char.realm - 1);
+    if (char.dawn >= need && char.dusk >= need) {
+      char.dawn -= need;
+      char.dusk -= need;
+      if (char.stage < 3) {
+        char.stage += 1;
+      } else {
+        char.realm += 1;
+        char.stage = 1;
+      }
+      saveLocalChar(char);
+      return ok({ status: 'ok', realm: char.realm, stage: char.stage });
+    }
+    return ok({ status: 'not_ready', need, dawn: char.dawn, dusk: char.dusk });
+  }
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     const { data, error } = await supabase.rpc('attempt_breakthrough');
@@ -266,6 +396,19 @@ export async function attemptBreakthrough(): Promise<Result<BreakthroughResponse
 export async function startRetreat(
   minutes: 15 | 60 | 240,
 ): Promise<Result<RetreatStartResponse>> {
+  if (!hasSupabase()) {
+    const readyAt = new Date(Date.now() + minutes * 60000).toISOString();
+    inMemoryRetreat = readyAt;
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem('arkvoid.retreat', readyAt);
+      } catch {
+        // Storage access may be restricted
+      }
+    }
+    return ok({ status: 'started', ready_at: readyAt });
+  }
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     const { data, error } = await supabase.rpc('start_retreat', {
@@ -277,6 +420,39 @@ export async function startRetreat(
 }
 
 export async function claimRetreat(): Promise<Result<RetreatClaimResponse>> {
+  if (!hasSupabase()) {
+    const char = getLocalChar();
+    let readyAt: string | null = inMemoryRetreat;
+    if (!readyAt && typeof window !== 'undefined') {
+      try {
+        readyAt = window.localStorage.getItem('arkvoid.retreat');
+      } catch {
+        // Storage access may be restricted
+      }
+    }
+    if (!readyAt) return ok({ status: 'none' });
+    const diff = Date.parse(readyAt) - Date.now();
+    if (diff > 0) {
+      return ok({ status: 'not_ready', seconds_left: Math.ceil(diff / 1000), ready_at: readyAt });
+    }
+    if (char) {
+      const cap = 40 + 30 * char.stage + 80 * (char.realm - 1);
+      char.dawn = Math.min(cap, char.dawn + 20);
+      char.dusk = Math.min(cap, char.dusk + 20);
+      saveLocalChar(char);
+      inMemoryRetreat = null;
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.removeItem('arkvoid.retreat');
+        } catch {
+          // Storage access may be restricted
+        }
+      }
+      return ok({ status: 'claimed', gain: 20, dawn: char.dawn, dusk: char.dusk, cap });
+    }
+    return ok({ status: 'none' });
+  }
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     const { data, error } = await supabase.rpc('claim_retreat');
@@ -286,6 +462,10 @@ export async function claimRetreat(): Promise<Result<RetreatClaimResponse>> {
 }
 
 export async function reportReach(spot: string): Promise<Result<void>> {
+  if (!hasSupabase()) {
+    return ok(undefined);
+  }
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     const { error } = await supabase.rpc('report_reach', {
@@ -299,6 +479,17 @@ export async function savePosition(
   area: string,
   pos: CharacterPos,
 ): Promise<Result<void>> {
+  if (!hasSupabase()) {
+    const char = getLocalChar();
+    if (char) {
+      char.area = area;
+      char.pos = pos;
+      char.last_seen = new Date().toISOString();
+      saveLocalChar(char);
+    }
+    return ok(undefined);
+  }
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     const { error } = await supabase.rpc('save_position', {
@@ -310,6 +501,22 @@ export async function savePosition(
 }
 
 export async function awayReport(): Promise<Result<AwayReportResponse>> {
+  if (!hasSupabase()) {
+    const char = getLocalChar();
+    if (!char) return ok({ status: 'no_character' });
+    return ok({
+      status: 'ok',
+      away_seconds: 0,
+      world_minutes_passed: 0,
+      world_minute: 360,
+      hour: 12,
+      npcs_now: [
+        { npc: 'hale', name: 'Hale', area: 'dawn-terrace', spot: 'pavilion', act: 'watching water' },
+      ],
+      retreat: null,
+    });
+  }
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     const { data, error } = await supabase.rpc('away_report');
@@ -323,6 +530,8 @@ export async function reportPlayer(
   reason: string,
   note?: string,
 ): Promise<Result<void>> {
+  if (!hasSupabase()) return ok(undefined);
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     const { error } = await supabase.rpc('report_player', {
@@ -335,6 +544,8 @@ export async function reportPlayer(
 }
 
 export async function sendFeedback(message: string): Promise<Result<void>> {
+  if (!hasSupabase()) return ok(undefined);
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     const { error } = await supabase.rpc('send_feedback', {
@@ -349,6 +560,8 @@ export async function logClientError(
   message: string,
   ctx?: Record<string, unknown>,
 ): Promise<Result<void>> {
+  if (!hasSupabase()) return ok(undefined);
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     const { error } = await supabase.rpc('log_client_error', {
@@ -361,6 +574,10 @@ export async function logClientError(
 }
 
 export async function publicStats(): Promise<Result<PublicStatsResponse>> {
+  if (!hasSupabase()) {
+    return ok({ characters: 1, active_hour: 12, world_minute: 360 });
+  }
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     const { data, error } = await supabase.rpc('public_stats');
@@ -370,6 +587,20 @@ export async function publicStats(): Promise<Result<PublicStatsResponse>> {
 }
 
 export async function deleteMyData(): Promise<Result<void>> {
+  if (!hasSupabase()) {
+    inMemoryChar = null;
+    inMemoryRetreat = null;
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem(LOCAL_STORAGE_KEY_CHAR);
+        window.localStorage.removeItem('arkvoid.retreat');
+      } catch {
+        // Storage access may be restricted
+      }
+    }
+    return ok(undefined);
+  }
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     const { error } = await supabase.rpc('delete_my_data');
@@ -378,6 +609,10 @@ export async function deleteMyData(): Promise<Result<void>> {
 }
 
 export async function worldNow(): Promise<Result<string>> {
+  if (!hasSupabase()) {
+    return ok(new Date().toISOString());
+  }
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     const { data, error } = await supabase.rpc('world_now');
@@ -391,6 +626,10 @@ export async function worldNow(): Promise<Result<string>> {
 // -------------------------------------------------------------
 
 export async function getCharacter(userId?: string): Promise<Result<Character | null>> {
+  if (!hasSupabase()) {
+    return ok(getLocalChar());
+  }
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     let query = supabase.from('characters').select('*');
@@ -404,6 +643,10 @@ export async function getCharacter(userId?: string): Promise<Result<Character | 
 }
 
 export async function getQuestStates(userId?: string): Promise<Result<QuestState[]>> {
+  if (!hasSupabase()) {
+    return ok([]);
+  }
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     let query = supabase.from('quest_state').select('*');
@@ -417,6 +660,10 @@ export async function getQuestStates(userId?: string): Promise<Result<QuestState
 }
 
 export async function getQuestDefs(): Promise<Result<QuestDef[]>> {
+  if (!hasSupabase()) {
+    return ok(DEFAULT_QUEST_DEFS);
+  }
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     const { data, error } = await supabase.from('quest_defs').select('*');
@@ -429,6 +676,10 @@ export async function getEvents(
   limit = 20,
   beforeId?: string,
 ): Promise<Result<WorldEvent[]>> {
+  if (!hasSupabase()) {
+    return ok([]);
+  }
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     let query = supabase
@@ -446,6 +697,10 @@ export async function getEvents(
 }
 
 export async function getNpcs(): Promise<Result<Npc[]>> {
+  if (!hasSupabase()) {
+    return ok(DEFAULT_NPCS);
+  }
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     const { data, error } = await supabase.from('npcs').select('*');
@@ -455,6 +710,10 @@ export async function getNpcs(): Promise<Result<Npc[]>> {
 }
 
 export async function getTrust(userId?: string): Promise<Result<NpcTrust[]>> {
+  if (!hasSupabase()) {
+    return ok([]);
+  }
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     let query = supabase.from('npc_trust').select('*');
@@ -471,6 +730,10 @@ export async function getMemories(
   npcId: string,
   limit = 10,
 ): Promise<Result<NpcMemory[]>> {
+  if (!hasSupabase()) {
+    return ok([]);
+  }
+
   return executeWithRetry(async () => {
     const supabase = getSupabase();
     const { data, error } = await supabase

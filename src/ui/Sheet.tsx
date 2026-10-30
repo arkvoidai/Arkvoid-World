@@ -82,6 +82,7 @@ export function Sheet({
     typeof window !== 'undefined' ? window.innerWidth >= 1024 : false,
   );
   const [hasScrolledContent, setHasScrolledContent] = useState(false);
+  const [isInputFocused, setIsInputFocused] = useState(false);
 
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -126,13 +127,33 @@ export function Sheet({
     const focusTimer = window.setTimeout(() => {
       const container = sheetRef.current;
       if (!container) return;
+
+      // Never steal focus if an input or textarea inside the sheet is already active
+      const active = document.activeElement;
+      if (
+        active &&
+        container.contains(active) &&
+        (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')
+      ) {
+        return;
+      }
+
+      // On mobile/coarse pointers, never force auto-focus on sheet open (prevents soft keyboard jitter)
+      const isCoarse =
+        typeof window !== 'undefined' &&
+        window.matchMedia('(pointer: coarse)').matches;
+      if (isCoarse) {
+        container.focus({ preventScroll: true });
+        return;
+      }
+
       const focusables = container.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        'input:not([disabled]), textarea:not([disabled]), [contenteditable], button:not([aria-label*="handle"]):not([aria-label*="detent"]):not([disabled]), [href]',
       );
       if (focusables[0]) {
         focusables[0].focus();
       } else {
-        container.focus();
+        container.focus({ preventScroll: true });
       }
     }, 30);
 
@@ -281,10 +302,36 @@ export function Sheet({
                 aria-modal="true"
                 aria-label={title}
                 tabIndex={-1}
-                drag="y"
+                drag={isInputFocused ? false : 'y'}
                 dragConstraints={{ top: 0, bottom: 0 }}
                 dragElastic={0.18}
                 onDragEnd={handleDragEnd}
+                onFocusCapture={(e) => {
+                  if (
+                    e.target instanceof HTMLInputElement ||
+                    e.target instanceof HTMLTextAreaElement
+                  ) {
+                    setIsInputFocused(true);
+                  }
+                }}
+                onBlurCapture={(e) => {
+                  if (
+                    e.target instanceof HTMLInputElement ||
+                    e.target instanceof HTMLTextAreaElement
+                  ) {
+                    window.setTimeout(() => {
+                      const active = document.activeElement;
+                      if (
+                        !(
+                          active instanceof HTMLInputElement ||
+                          active instanceof HTMLTextAreaElement
+                        )
+                      ) {
+                        setIsInputFocused(false);
+                      }
+                    }, 60);
+                  }
+                }}
                 initial={reduced ? { opacity: 0 } : { opacity: 0, y: 80 }}
                 animate={{
                   opacity: 1,
@@ -294,11 +341,16 @@ export function Sheet({
                 transition={reduced ? { duration: 0.12 } : SPRING}
                 className="fixed inset-x-0 bottom-0 flex flex-col overflow-hidden outline-none"
                 style={{
-                  height: `${DETENT_VH[activeDetent]}dvh`,
+                  height: isInputFocused
+                    ? 'min(88dvh, 560px)'
+                    : `${DETENT_VH[activeDetent]}dvh`,
+                  maxHeight: '94dvh',
                   borderTopLeftRadius: RADII.sheet,
                   borderTopRightRadius: RADII.sheet,
                   paddingBottom: 'var(--safe-bottom, 0px)',
-                  transition: 'height 320ms cubic-bezier(0.2, 0.8, 0.2, 1)',
+                  transition: isInputFocused
+                    ? 'none'
+                    : 'height 320ms cubic-bezier(0.2, 0.8, 0.2, 1)',
                   ...glassStyle,
                   backgroundColor: 'rgba(251, 250, 247, 0.97)',
                 }}
@@ -307,6 +359,7 @@ export function Sheet({
                 <div className="flex flex-col items-center pt-3 pb-2">
                   <button
                     type="button"
+                    tabIndex={-1}
                     aria-label={`Sheet handle, current height ${activeDetent}`}
                     onClick={() => {
                       const nextIdx =

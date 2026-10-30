@@ -178,9 +178,12 @@ export class CameraRailController {
   private readonly currentPos = new THREE.Vector3();
   private readonly currentLook = new THREE.Vector3();
 
-  play(rail: CameraRailDef, options?: PlayRailOptions): void {
+  private customDuration?: number;
+
+  play(rail: CameraRailDef, options?: PlayRailOptions & { duration?: number }): void {
     this.currentRail = rail;
     this.currentTime = 0;
+    this.customDuration = options?.duration;
     this.isLooping = options?.loop ?? false;
     this.handheld = options?.handheldDrift ?? true;
     this.onCompleteCallback = options?.onDone ?? null;
@@ -191,7 +194,20 @@ export class CameraRailController {
     this.playing = false;
     this.currentRail = null;
     this.currentTime = 0;
+    this.customDuration = undefined;
     this.onCompleteCallback = null;
+  }
+
+  skipToEnd(camera?: THREE.PerspectiveCamera): void {
+    if (!this.playing || !this.currentRail) return;
+    const duration = this.customDuration ?? this.currentRail.duration;
+    this.currentTime = duration;
+    if (camera) {
+      this.evaluateAt(this.currentRail.duration, camera);
+    }
+    const cb = this.onCompleteCallback;
+    this.stop();
+    cb?.();
   }
 
   isPlaying(): boolean {
@@ -203,7 +219,7 @@ export class CameraRailController {
   }
 
   getDuration(): number {
-    return this.currentRail?.duration ?? 0;
+    return this.customDuration ?? (this.currentRail?.duration ?? 0);
   }
 
   /**
@@ -216,14 +232,15 @@ export class CameraRailController {
     }
 
     this.currentTime += dt;
-    const duration = this.currentRail.duration;
+    const effectiveDuration = this.customDuration ?? this.currentRail.duration;
+    const baseDuration = this.currentRail.duration;
 
-    if (this.currentTime >= duration) {
+    if (this.currentTime >= effectiveDuration) {
       if (this.isLooping) {
-        this.currentTime = this.currentTime % duration;
+        this.currentTime = this.currentTime % effectiveDuration;
       } else {
-        this.currentTime = duration;
-        this.evaluateAt(this.currentTime, camera);
+        this.currentTime = effectiveDuration;
+        this.evaluateAt(baseDuration, camera);
         const cb = this.onCompleteCallback;
         this.stop();
         cb?.();
@@ -231,7 +248,8 @@ export class CameraRailController {
       }
     }
 
-    this.evaluateAt(this.currentTime, camera);
+    const evalTime = (this.currentTime / effectiveDuration) * baseDuration;
+    this.evaluateAt(evalTime, camera);
     return true;
   }
 

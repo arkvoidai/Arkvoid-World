@@ -99,9 +99,17 @@ export class ShowcaseWorldSystem implements System {
   private interactables: InteractablesSystem | null = null;
   private actorsLineup: ActorsLineup | null = null;
   readonly isActorsMode: boolean = false;
-  readonly playerForm: FormId = 0;
-  readonly playerLeaning: LeaningId = 'dawn';
-  private hasStartedLocomotion = false;
+  playerForm: FormId = 0;
+  playerLeaning: LeaningId = 'dawn';
+  hasStartedLocomotion = false;
+  private localPlayer: Wanderer | null = null;
+  private previewWanderer: Wanderer | null = null;
+  private viewMode: 'gate' | 'awakening' | 'arrival' | 'world' = 'gate';
+  private awakenPulseMesh: THREE.Mesh | null = null;
+  private awakenPulseTimer = -1;
+  private targetHour: number | null = null;
+  private currentHourSmooth: number = 18.3; // golden hour on first sight
+  private arrivalShortened = false;
   private isWalkTest = false;
   private walkTestTimer = 0;
   private walkTestWaypointIndex = 0;
@@ -425,7 +433,35 @@ export class ShowcaseWorldSystem implements System {
     });
     localPlayer.position.copy(initialPos);
     localPlayer.rotation.y = initialYaw;
+    this.localPlayer = localPlayer;
     this.worldGroup.add(localPlayer);
+
+    // Awakening Preview Wanderer (pedestal spot beside the spirit pond: -7.5, 0.05, -3.8)
+    const preview = new Wanderer({
+      form: this.playerForm,
+      leaning: this.playerLeaning,
+      castShadow: true,
+    });
+    preview.position.set(-7.5, 0.05, -3.8);
+    preview.rotation.y = 0.45;
+    preview.setAnimationState('idle');
+    this.previewWanderer = preview;
+    this.worldGroup.add(preview);
+
+    // Awakening Ground Pulse Ring Mesh
+    const ringGeo = new THREE.RingGeometry(0.5, 1.2, 48);
+    ringGeo.rotateX(-Math.PI / 2);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: '#FFB27A',
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    this.awakenPulseMesh = new THREE.Mesh(ringGeo, ringMat);
+    this.awakenPulseMesh.position.set(-7.5, 0.08, -3.8);
+    this.awakenPulseMesh.visible = false;
+    this.worldGroup.add(this.awakenPulseMesh);
 
     this.playerController = new PlayerController(localPlayer, {
       assistedMovement: false,
@@ -499,6 +535,65 @@ export class ShowcaseWorldSystem implements System {
         this.forceNextSkySync = true;
       } else if (cmd.type === 'triggerInteract') {
         this.interactables?.triggerInteraction();
+      } else if (cmd.type === 'setViewMode') {
+        this.viewMode = cmd.mode;
+        if (cmd.mode === 'awakening') {
+          if (this.previewWanderer) this.previewWanderer.visible = true;
+          this.targetHour = 18.3; // golden hour on first sight
+          this.inputManager?.setLocked(true);
+        } else if (cmd.mode === 'gate') {
+          if (this.previewWanderer) this.previewWanderer.visible = false;
+          this.targetHour = 18.3;
+          this.inputManager?.setLocked(true);
+        } else if (cmd.mode === 'arrival') {
+          this.inputManager?.setLocked(true);
+        } else if (cmd.mode === 'world') {
+          if (this.previewWanderer) this.previewWanderer.visible = false;
+          this.hasStartedLocomotion = true;
+          this.inputManager?.setLocked(false);
+        }
+      } else if (cmd.type === 'setPreviewFigure') {
+        this.playerLeaning = cmd.leaning;
+        this.playerForm = cmd.form;
+        this.previewWanderer?.setFormAndLeaning(cmd.form, cmd.leaning);
+        this.localPlayer?.setFormAndLeaning(cmd.form, cmd.leaning);
+        // Eased transition of sky hour based on leaning:
+        // Dawn -> 6.5, Dusk -> 18.3, Still -> 12.0
+        if (cmd.leaning === 'dawn') this.targetHour = 6.5;
+        else if (cmd.leaning === 'dusk') this.targetHour = 18.3;
+        else if (cmd.leaning === 'still') this.targetHour = 12.0;
+      } else if (cmd.type === 'triggerAwakenPulse') {
+        this.previewWanderer?.brightenEyes(true);
+        this.awakenPulseTimer = 0;
+        if (this.awakenPulseMesh) {
+          this.awakenPulseMesh.visible = true;
+          this.awakenPulseMesh.scale.set(0.1, 0.1, 0.1);
+        }
+      } else if (cmd.type === 'playArrivalRail') {
+        this.viewMode = 'arrival';
+        this.arrivalShortened = false;
+        this.inputManager?.setLocked(true);
+        if (this.previewWanderer) this.previewWanderer.visible = false;
+        const dur = cmd.duration ?? 9.0;
+        this.railController.play(BUILT_IN_RAILS.arrival!, {
+          duration: dur,
+          onDone: () => {
+            this.viewMode = 'world';
+            this.hasStartedLocomotion = true;
+            this.inputManager?.setLocked(false);
+            this.cameraRig?.startHandoffFromShowcase(ctx.camera.position, this.activeLookTarget);
+            cmd.onDone?.();
+          },
+        });
+      } else if (cmd.type === 'skipArrivalRail') {
+        if (this.railController.isPlaying() && !this.arrivalShortened) {
+          this.arrivalShortened = true;
+          this.railController.skipToEnd(ctx.camera);
+          this.viewMode = 'world';
+          this.hasStartedLocomotion = true;
+          this.inputManager?.setLocked(false);
+          this.cameraRig?.startHandoffFromShowcase(ctx.camera.position, this.activeLookTarget);
+        }
       }
     });
 
@@ -540,14 +635,61 @@ export class ShowcaseWorldSystem implements System {
   }
 
   update(dt: number, ctx: EngineContext): void {
-    const currentHour = hourNow();
-    ctx.bridge.mutable.hour = currentHour;
+    const realHour = hourNow();
+    let visualHour: number;
+
+    // In gate or awakening mode, smoothly transition toward targetHour (1.5s ease) or golden hour (18.3)
+    if (this.viewMode === 'gate' || this.viewMode === 'awakening') {
+      const target = this.targetHour ?? 18.3;
+      // Exponential smoothing with tau ~ 0.5s => ~1.5s transition
+      const alpha = 1.0 - Math.exp(-dt * 2.5);
+      this.currentHourSmooth += (target - this.currentHourSmooth) * alpha;
+      visualHour = this.currentHourSmooth;
+    } else if (this.viewMode === 'arrival') {
+      // Transition toward real world hour over 4s
+      const alpha = 1.0 - Math.exp(-dt * 1.5);
+      this.currentHourSmooth += (realHour - this.currentHourSmooth) * alpha;
+      visualHour = this.currentHourSmooth;
+    } else {
+      visualHour = realHour;
+      this.currentHourSmooth = realHour;
+    }
+
+    ctx.bridge.mutable.hour = visualHour;
 
     const force = this.forceNextSkySync;
     this.forceNextSkySync = false;
 
-    timeOfDayState(currentHour, this.skyState);
+    timeOfDayState(visualHour, this.skyState);
     this.syncFog(force);
+
+    // Update preview figure slow rotation (14s full turn) in awakening mode
+    if (this.viewMode === 'awakening' && this.previewWanderer) {
+      this.previewWanderer.rotation.y += dt * (Math.PI * 2 / 14);
+      this.previewWanderer.update(dt, 0, this.wind?.uniforms.uWindDir.value, 0.05);
+    }
+
+    // Update Awaken pulse ring expanding outward from the pond (or gentle fade on reduced motion)
+    if (this.awakenPulseTimer >= 0 && this.awakenPulseMesh) {
+      this.awakenPulseTimer += dt;
+      const t = this.awakenPulseTimer / 2.5; // 2.5s expansion
+      if (t <= 1.0) {
+        if (ctx.device.reducedMotion) {
+          this.awakenPulseMesh.scale.set(22.0, 1.0, 22.0);
+          const opacity = (1.0 - t) * 0.75;
+          (this.awakenPulseMesh.material as THREE.MeshBasicMaterial).opacity = opacity;
+        } else {
+          const radius = 0.5 + t * 45.0; // expand across island (up to 45m)
+          this.awakenPulseMesh.scale.set(radius, 1.0, radius);
+          const opacity = Math.sin(t * Math.PI) * 0.85;
+          (this.awakenPulseMesh.material as THREE.MeshBasicMaterial).opacity = opacity;
+        }
+      } else {
+        this.awakenPulseTimer = -1;
+        this.awakenPulseMesh.visible = false;
+        this.previewWanderer?.brightenEyes(false);
+      }
+    }
 
     // Sample user or synthetic input
     const rawInput = this.inputManager?.sample() ?? {
@@ -583,7 +725,8 @@ export class ShowcaseWorldSystem implements System {
       hasInput &&
       this.reviewShotIndex === null &&
       !this.railController.isPlaying() &&
-      !this.isActorsMode
+      !this.isActorsMode &&
+      this.viewMode === 'world'
     ) {
       this.hasStartedLocomotion = true;
       this.cameraRig?.startHandoffFromShowcase(ctx.camera.position, this.activeLookTarget);
@@ -778,6 +921,30 @@ export class ShowcaseWorldSystem implements System {
       return;
     }
 
+    if (this.viewMode === 'awakening' && this.previewWanderer) {
+      // Pedestal spot beside spirit pond: previewWanderer is at (-7.5, 0.05, -3.8)
+      // On phone, frame in upper half (raise look target slightly); on desktop, frame slightly to right
+      const isPhone = ctx.device.deviceClass === 'phone';
+      const targetFov = isPhone ? 46 : 40;
+      if (Math.abs(ctx.camera.fov - targetFov) > 0.05) {
+        ctx.camera.fov = targetFov;
+        ctx.camera.updateProjectionMatrix();
+      }
+      const camPos = isPhone ? new THREE.Vector3(-7.5, 1.45, -0.9) : new THREE.Vector3(-6.2, 1.35, -1.2);
+      const lookAt = isPhone ? new THREE.Vector3(-7.5, 0.75, -3.8) : new THREE.Vector3(-7.5, 0.95, -3.8);
+
+      if (ctx.device.reducedMotion) {
+        ctx.camera.position.copy(camPos);
+        this.activeLookTarget.copy(lookAt);
+      } else {
+        // Eased transition into awakening pedestal view
+        ctx.camera.position.lerp(camPos, 0.08);
+        this.activeLookTarget.lerp(lookAt, 0.08);
+      }
+      ctx.camera.lookAt(this.activeLookTarget);
+      return;
+    }
+
     if (this.hasStartedLocomotion && this.cameraRig && this.playerController) {
       this.cameraRig.update(
         dt,
@@ -951,6 +1118,19 @@ export class ShowcaseWorldSystem implements System {
     if (this.actorsLineup) {
       this.actorsLineup.dispose();
       this.actorsLineup = null;
+    }
+    if (this.previewWanderer) {
+      this.previewWanderer.dispose();
+      this.previewWanderer = null;
+    }
+    if (this.localPlayer) {
+      this.localPlayer.dispose();
+      this.localPlayer = null;
+    }
+    if (this.awakenPulseMesh) {
+      this.awakenPulseMesh.geometry.dispose();
+      (this.awakenPulseMesh.material as THREE.Material).dispose();
+      this.awakenPulseMesh = null;
     }
     if (this.worldGroup) {
       disposeObject3D(this.worldGroup);

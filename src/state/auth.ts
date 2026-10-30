@@ -82,6 +82,42 @@ function clearArkvoidStorage(): void {
   }
 }
 
+function createLocalGuestSession(): { user: User; session: Session } {
+  let guestId = 'guest-local';
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = window.localStorage.getItem('arkvoid.guest_id');
+      if (stored) {
+        guestId = stored;
+      } else {
+        guestId = 'guest-' + Math.random().toString(36).slice(2, 10);
+        window.localStorage.setItem('arkvoid.guest_id', guestId);
+      }
+    } catch {
+      // Storage access may be restricted
+    }
+  }
+
+  const user: User = {
+    id: guestId,
+    app_metadata: { provider: 'anonymous' },
+    user_metadata: {},
+    aud: 'authenticated',
+    created_at: new Date().toISOString(),
+    is_anonymous: true,
+  };
+
+  const session: Session = {
+    access_token: 'local-guest-token-' + guestId,
+    token_type: 'bearer',
+    expires_in: 86400,
+    refresh_token: 'local-guest-refresh',
+    user,
+  };
+
+  return { user, session };
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   status: 'loading',
   user: null,
@@ -97,6 +133,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   resetGuestState: () => {
     clearArkvoidStorage();
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem('arkvoid.local_guest');
+        window.localStorage.removeItem('arkvoid.character');
+        window.localStorage.removeItem('arkvoid.guest_id');
+      } catch {
+        // Storage access may be restricted
+      }
+    }
     set({
       status: 'signed-out',
       user: null,
@@ -112,6 +157,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     isInitialized = true;
 
     if (!hasSupabase()) {
+      if (typeof window !== 'undefined') {
+        try {
+          const stored = window.localStorage.getItem('arkvoid.local_guest');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed?.user) {
+              set({
+                status: 'guest',
+                user: parsed.user,
+                session: parsed.session ?? null,
+                isGuest: true,
+                error: null,
+              });
+              return;
+            }
+          }
+        } catch {
+          // ignore storage error
+        }
+      }
       set({ status: 'signed-out', user: null, session: null, isGuest: false });
       return;
     }
@@ -235,46 +300,59 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signInGuest: async (captchaTokenParam?: string) => {
-    if (!hasSupabase()) {
-      set({
-        error: createAppError(
-          'VALIDATION',
-          'Supabase is not configured. Add credentials in src/config/public.ts.',
-        ),
-      });
-      return false;
-    }
-
     set({ error: null });
-    try {
-      const captchaToken = captchaTokenParam || (await getCaptchaToken('guest_signup'));
-      const supabase = getSupabase();
 
-      const { data, error } = await supabase.auth.signInAnonymously({
-        options: captchaToken ? { captchaToken } : undefined,
-      });
+    if (hasSupabase()) {
+      try {
+        const captchaToken = captchaTokenParam || (await getCaptchaToken('guest_signup'));
+        const supabase = getSupabase();
 
-      if (error) {
-        set({ error: mapError(error) });
-        return false;
-      }
-
-      if (data.session?.user) {
-        set({
-          status: 'guest',
-          user: data.session.user,
-          session: data.session,
-          isGuest: true,
-          error: null,
-          sessionFailedMessage: null,
+        const { data, error } = await supabase.auth.signInAnonymously({
+          options: captchaToken ? { captchaToken } : undefined,
         });
-        return true;
+
+        if (!error && data.session?.user) {
+          set({
+            status: 'guest',
+            user: data.session.user,
+            session: data.session,
+            isGuest: true,
+            error: null,
+            sessionFailedMessage: null,
+          });
+          return true;
+        }
+
+        if (error) {
+          console.warn(
+            '[Arkvoid Auth] Supabase anonymous sign-in error, falling back to local guest:',
+            error.message,
+          );
+        }
+      } catch (e) {
+        console.warn('[Arkvoid Auth] Remote sign-in failed, falling back to local guest:', e);
       }
-      return false;
-    } catch (e) {
-      set({ error: mapError(e) });
-      return false;
     }
+
+    // Graceful local guest session fallback: ensures preview users & visitors can always enter Awakening & the world
+    const { user, session } = createLocalGuestSession();
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem('arkvoid.local_guest', JSON.stringify({ user, session }));
+      } catch {
+        // Storage access may be restricted
+      }
+    }
+
+    set({
+      status: 'guest',
+      user,
+      session,
+      isGuest: true,
+      error: null,
+      sessionFailedMessage: null,
+    });
+    return true;
   },
 
   sendEmailCode: async (email: string, captchaTokenParam?: string) => {

@@ -52,6 +52,7 @@ export class InputManager {
   private joystickRing: HTMLDivElement | null = null;
   private joystickKnob: HTMLDivElement | null = null;
   private wasRunningHapticFired = false;
+  private hasShownFirstTouchPulse = false;
 
   // Clean-up callbacks
   private readonly unbindCallbacks: (() => void)[] = [];
@@ -311,6 +312,34 @@ export class InputManager {
     this.joystickRing.style.left = `${clientX}px`;
     this.joystickRing.style.top = `${clientY}px`;
     this.joystickRing.style.opacity = '1';
+
+    // First-run guidance: hint with soft pulse for 3 seconds on first touch
+    if (!this.hasShownFirstTouchPulse) {
+      this.hasShownFirstTouchPulse = true;
+      this.joystickRing.style.transition = 'opacity 0.15s ease-out, transform 0.6s ease-in-out';
+      this.joystickRing.style.transform = 'translate3d(-50%, -50%, 0) scale(1.08)';
+      setTimeout(() => {
+        if (this.joystickRing) {
+          this.joystickRing.style.transform = 'translate3d(-50%, -50%, 0) scale(1.0)';
+        }
+      }, 600);
+      setTimeout(() => {
+        if (this.joystickRing) {
+          this.joystickRing.style.transform = 'translate3d(-50%, -50%, 0) scale(1.06)';
+        }
+      }, 1400);
+      setTimeout(() => {
+        if (this.joystickRing) {
+          this.joystickRing.style.transform = 'translate3d(-50%, -50%, 0) scale(1.0)';
+        }
+      }, 2000);
+      setTimeout(() => {
+        if (this.joystickRing) {
+          this.joystickRing.style.transition = 'opacity 0.15s ease-out';
+        }
+      }, 3000);
+    }
+
     if (this.joystickKnob) {
       this.joystickKnob.style.transform = 'translate3d(0, 0, 0)';
     }
