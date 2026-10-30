@@ -184,7 +184,7 @@ export class FarMountainRanges extends THREE.Group {
     this.waterfallMaterial.uniforms.uTime!.value = elapsed;
   }
 
-  dispose(): void {
+  override dispose(): void {
     for (const child of [...this.children]) {
       if ((child as THREE.Mesh).isMesh) (child as THREE.Mesh).geometry.dispose();
       this.remove(child);
