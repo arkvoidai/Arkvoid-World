@@ -245,9 +245,9 @@ export class CameraRig {
       this.camera.lookAt(this.lookTarget);
     }
 
-    // 9. FOV Dynamics (+3 deg when running)
-    const targetFov = this.baseFov + (speed01 > 0.6 ? 3.0 : 0.0);
-    this.currentFov += (targetFov - this.currentFov) * Math.min(1.0, clampedDt * 6.0);
+    // 9. Keep the field of view stable. Preserve intentional shot overrides.
+    const targetFov = this.activeShot?.fov ?? this.baseFov;
+    this.currentFov += (targetFov - this.currentFov) * Math.min(1.0, clampedDt * 4.0);
     if (Math.abs(this.camera.fov - this.currentFov) > 0.05) {
       this.camera.fov = this.currentFov;
       this.camera.updateProjectionMatrix();

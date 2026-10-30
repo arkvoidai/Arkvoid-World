@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import {
   InputManager,
   PlayerController,
+  normalizeTouchStick,
   CameraRig,
   InteractablesSystem,
   type InputState,
@@ -79,10 +80,10 @@ test('Step 13: PlayerController kinematic properties, speeds, and state machine'
   // 1. Physical constants
   assert.equal(controller.radius, 0.3);
   assert.equal(controller.height, 1.7);
-  assert.equal(controller.walkSpeed, 2.3);
-  assert.equal(controller.runSpeed, 4.8);
-  assert.equal(controller.acceleration, 12.0);
-  assert.equal(controller.deceleration, 16.0);
+  assert.equal(controller.walkSpeed, 2.0);
+  assert.equal(controller.runSpeed, 3.6);
+  assert.equal(controller.acceleration, 7.0);
+  assert.equal(controller.deceleration, 12.0);
 
   // 2. Initial state
   assert.equal(controller.getState(), 'idle');
@@ -137,6 +138,41 @@ test('Step 13: PlayerController kinematic properties, speeds, and state machine'
   controller.dispose();
 });
 
+test('Touch stick has a deadzone and fixed, bounded travel', () => {
+  const idle = normalizeTouchStick(3, 2);
+  assert.equal(idle.moveX, 0);
+  assert.equal(idle.moveY, 0);
+
+  const full = normalizeTouchStick(300, 0);
+  assert.ok(Math.abs(full.moveX - 1) < 1e-6);
+  assert.equal(full.moveY, 0);
+  assert.equal(full.knobX, 36);
+  assert.equal(full.knobY, 0);
+  assert.equal(full.magnitude, 1);
+
+  const diagonal = normalizeTouchStick(300, -300);
+  assert.ok(Math.hypot(diagonal.moveX, diagonal.moveY) <= 1.001);
+  assert.ok(Math.hypot(diagonal.knobX, diagonal.knobY) <= 36.001);
+});
+
+test('PlayerController coasts naturally after the movement stick is released', () => {
+  const controller = new PlayerController();
+  const forward: InputState = {
+    moveX: 0, moveY: 1, lookDeltaYaw: 0, lookDeltaPitch: 0,
+    run: false, interact: false, cancel: false,
+  };
+  for (let i = 0; i < 18; i++) controller.update(0.016, forward, 0);
+  const releasePosition = controller.position.z;
+  const releaseSpeed = controller.speed01;
+
+  const idle: InputState = { ...forward, moveY: 0 };
+  for (let i = 0; i < 4; i++) controller.update(0.016, idle, 0);
+
+  assert.ok(controller.position.z < releasePosition, 'Character should coast forward while slowing down');
+  assert.ok(controller.speed01 < releaseSpeed, 'Speed should decrease smoothly');
+  controller.dispose();
+});
+
 test('Step 13: PlayerController edge damping and warning toast', () => {
   let toastReceived = '';
   const controller = new PlayerController(undefined, {
@@ -180,12 +216,12 @@ test('Step 13: CameraRig third-person spring arm, pitch clamps, and hall closer 
   rigDesktop.update(0.016, new THREE.Vector3(0, 0, 0), 0, 0, 0, -10.0, false);
   assert.ok(rigDesktop.pitch >= -0.52 - 1e-4, 'Pitch must clamp at lower limit (-30 deg)');
 
-  // 2. Running FOV expansion test (+3 deg)
+  // 2. Keep FOV stable during movement for a calmer camera.
   const initialFov = camera.fov;
   for (let i = 0; i < 30; i++) {
     rigDesktop.update(0.016, new THREE.Vector3(0, 0, 0), 0, 1.0, 0, 0, true);
   }
-  assert.ok(camera.fov > initialFov + 2.5, 'Running FOV should expand toward 61 deg');
+  assert.ok(Math.abs(camera.fov - initialFov) < 0.05, 'Camera FOV should remain steady while running');
 
   // 3. Phone device configuration test
   const rigPhone = new CameraRig(camera, mockPhoneDevice);

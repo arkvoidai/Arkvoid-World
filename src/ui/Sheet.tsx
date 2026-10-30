@@ -86,7 +86,12 @@ export function Sheet({
 
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
   const glassStyle = useGlass({ elevated: true });
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   const setDetent = useCallback(
     (next: SheetDetent) => {
@@ -103,6 +108,38 @@ export function Sheet({
     window.addEventListener('resize', onResize, { passive: true });
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  // Keyboard movement only changes the visual viewport. Keep the world/layout
+  // viewport steady, and update the focused sheet's position without React
+  // rerenders on every frame of the keyboard animation.
+  useEffect(() => {
+    if (!open || isDesktop) return;
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+
+    const viewport = window.visualViewport;
+    const syncVisualViewport = () => {
+      const height = viewport?.height ?? window.innerHeight;
+      const offsetTop = viewport?.offsetTop ?? 0;
+      const keyboardInset = Math.max(0, window.innerHeight - height - offsetTop);
+      sheet.style.setProperty('--arkvoid-visual-height', `${Math.round(height)}px`);
+      sheet.style.setProperty('--arkvoid-keyboard-inset', `${Math.round(keyboardInset)}px`);
+      sheet.style.setProperty(
+        '--arkvoid-sheet-input-height',
+        `${Math.max(180, Math.min(560, Math.round(height - 16)))}px`,
+      );
+    };
+
+    syncVisualViewport();
+    viewport?.addEventListener('resize', syncVisualViewport);
+    viewport?.addEventListener('scroll', syncVisualViewport);
+    window.addEventListener('resize', syncVisualViewport, { passive: true });
+    return () => {
+      viewport?.removeEventListener('resize', syncVisualViewport);
+      viewport?.removeEventListener('scroll', syncVisualViewport);
+      window.removeEventListener('resize', syncVisualViewport);
+    };
+  }, [open, isDesktop, isInputFocused]);
 
   useEffect(() => {
     if (!open) return;
@@ -160,7 +197,7 @@ export function Sheet({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -188,6 +225,9 @@ export function Sheet({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => {
+      window.dispatchEvent(
+        new CustomEvent('arkvoid:text-input-focus', { detail: { active: false } }),
+      );
       window.clearTimeout(focusTimer);
       window.removeEventListener('keydown', handleKeyDown);
       for (const el of modifiedElements) {
@@ -196,7 +236,7 @@ export function Sheet({
       }
       previousFocusRef.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   const handleDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     const vh = typeof window !== 'undefined' ? window.innerHeight : 844;
@@ -216,7 +256,7 @@ export function Sheet({
 
   const reduced = prefersReducedMotion();
   const canScrollBody =
-    isDesktop || activeDetent === 'full' || hasScrolledContent;
+    isDesktop || activeDetent === 'full' || hasScrolledContent || isInputFocused;
 
   return (
     <LazyMotion features={domAnimation}>
@@ -312,6 +352,9 @@ export function Sheet({
                     e.target instanceof HTMLTextAreaElement
                   ) {
                     setIsInputFocused(true);
+                    window.dispatchEvent(
+                      new CustomEvent('arkvoid:text-input-focus', { detail: { active: true } }),
+                    );
                   }
                 }}
                 onBlurCapture={(e) => {
@@ -328,6 +371,9 @@ export function Sheet({
                         )
                       ) {
                         setIsInputFocused(false);
+                        window.dispatchEvent(
+                          new CustomEvent('arkvoid:text-input-focus', { detail: { active: false } }),
+                        );
                       }
                     }, 60);
                   }
@@ -341,10 +387,15 @@ export function Sheet({
                 transition={reduced ? { duration: 0.12 } : SPRING}
                 className="fixed inset-x-0 bottom-0 flex flex-col overflow-hidden outline-none"
                 style={{
+                  bottom: isInputFocused
+                    ? 'calc(var(--arkvoid-keyboard-inset, 0px) + var(--safe-bottom, 0px))'
+                    : '0px',
                   height: isInputFocused
-                    ? 'min(88dvh, 560px)'
+                    ? 'var(--arkvoid-sheet-input-height, min(88dvh, 560px))'
                     : `${DETENT_VH[activeDetent]}dvh`,
-                  maxHeight: '94dvh',
+                  maxHeight: isInputFocused
+                    ? 'var(--arkvoid-sheet-input-height, 94dvh)'
+                    : '94dvh',
                   borderTopLeftRadius: RADII.sheet,
                   borderTopRightRadius: RADII.sheet,
                   paddingBottom: 'var(--safe-bottom, 0px)',
@@ -416,9 +467,13 @@ export function Sheet({
                       setHasScrolledContent(true);
                     }
                   }}
-                  className={`flex-1 px-6 pb-6 ${
+                  className={`min-h-0 flex-1 px-6 pb-6 ${
                     canScrollBody ? 'overflow-y-auto' : 'overflow-y-hidden'
                   }`}
+                  style={{
+                    overscrollBehavior: 'contain',
+                    WebkitOverflowScrolling: 'touch',
+                  }}
                 >
                   {children}
                 </div>

@@ -1,10 +1,8 @@
-import { haptic } from '@/lib/motion';
-
 export interface InputState {
-  moveX: number; // -1 (left) .. +1 (right)
-  moveY: number; // -1 (backward) .. +1 (forward)
-  lookDeltaYaw: number; // radians
-  lookDeltaPitch: number; // radians
+  moveX: number;
+  moveY: number;
+  lookDeltaYaw: number;
+  lookDeltaPitch: number;
   run: boolean;
   interact: boolean;
   cancel: boolean;
@@ -15,12 +13,68 @@ export interface InputOptions {
   reducedMotion?: boolean;
 }
 
+export const TOUCH_STICK_RADIUS = 36;
+export const TOUCH_STICK_DEADZONE = 0.18;
+
+export interface NormalizedStick {
+  moveX: number;
+  moveY: number;
+  knobX: number;
+  knobY: number;
+  magnitude: number;
+}
+
+/** Converts a thumb displacement into a stable, bounded movement vector. */
+export function normalizeTouchStick(
+  dx: number,
+  dy: number,
+  maxTravel = TOUCH_STICK_RADIUS,
+  deadzone = TOUCH_STICK_DEADZONE,
+): NormalizedStick {
+  const distance = Math.hypot(dx, dy);
+  if (distance <= 0.0001 || maxTravel <= 0) {
+    return { moveX: 0, moveY: 0, knobX: 0, knobY: 0, magnitude: 0 };
+  }
+
+  const clampedDistance = Math.min(distance, maxTravel);
+  const magnitude = clampedDistance / maxTravel;
+  const knobScale = clampedDistance / distance;
+  const knobX = dx * knobScale;
+  const knobY = dy * knobScale;
+
+  if (magnitude <= deadzone) {
+    return { moveX: 0, moveY: 0, knobX, knobY, magnitude };
+  }
+
+  const remapped = (magnitude - deadzone) / (1 - deadzone);
+  const strength = Math.pow(remapped, 1.15);
+  return {
+    moveX: (dx / distance) * strength,
+    moveY: -(dy / distance) * strength,
+    knobX,
+    knobY,
+    magnitude,
+  };
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    target.isContentEditable
+  ) {
+    return true;
+  }
+  return target.getAttribute('role') === 'textbox';
+}
+
 export class InputManager {
   private readonly targetElement: HTMLElement;
   private options: InputOptions;
   private locked = false;
 
-  // Active state read each frame
   private readonly state: InputState = {
     moveX: 0,
     moveY: 0,
@@ -31,14 +85,10 @@ export class InputManager {
     cancel: false,
   };
 
-  // One-shot flags consumed on read
   private interactTriggered = false;
   private cancelTriggered = false;
-
-  // Keyboard state
   private readonly keysDown = new Set<string>();
 
-  // Pointer / Touch tracking
   private movePointerId: number | null = null;
   private lookPointerId: number | null = null;
   private moveTouchStart = { x: 0, y: 0 };
@@ -46,15 +96,15 @@ export class InputManager {
   private lookTouchLast = { x: 0, y: 0 };
   private isMouseDragging = false;
   private mouseLast = { x: 0, y: 0 };
+  private touchRunHeld = false;
+  private runPointerId: number | null = null;
 
-  // Joystick DOM elements
-  private joystickContainer: HTMLDivElement | null = null;
+  private controlsContainer: HTMLDivElement | null = null;
   private joystickRing: HTMLDivElement | null = null;
   private joystickKnob: HTMLDivElement | null = null;
-  private wasRunningHapticFired = false;
-  private hasShownFirstTouchPulse = false;
+  private runButton: HTMLButtonElement | null = null;
+  private originalTouchAction = '';
 
-  // Clean-up callbacks
   private readonly unbindCallbacks: (() => void)[] = [];
 
   constructor(targetElement: HTMLElement, options: InputOptions = {}) {
@@ -62,7 +112,9 @@ export class InputManager {
     this.options = options;
 
     if (typeof window !== 'undefined') {
-      this.createJoystickDOM();
+      this.originalTouchAction = targetElement.style.touchAction;
+      targetElement.style.touchAction = 'none';
+      this.createControlsDOM();
       this.bindEvents();
     }
   }
@@ -73,334 +125,364 @@ export class InputManager {
 
   setLocked(locked: boolean): void {
     this.locked = locked;
-    if (locked) {
-      this.reset();
+    if (this.controlsContainer) {
+      this.controlsContainer.style.display = locked ? 'none' : 'block';
     }
+    if (locked) this.reset();
   }
 
   isLocked(): boolean {
     return this.locked;
   }
 
-  private createJoystickDOM(): void {
+  private createControlsDOM(): void {
+    const isTouchDevice =
+      (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) ||
+      window.matchMedia('(pointer: coarse)').matches;
+    if (!isTouchDevice) return;
+
     const container = document.createElement('div');
-    container.style.position = 'fixed';
-    container.style.left = '0';
-    container.style.top = '0';
-    container.style.width = '100vw';
-    container.style.height = '100vh';
-    container.style.pointerEvents = 'none';
-    container.style.zIndex = '45';
-    container.style.display = 'none';
+    container.setAttribute('aria-label', 'World movement controls');
+    Object.assign(container.style, {
+      position: 'fixed',
+      inset: '0',
+      width: '100%',
+      height: '100%',
+      pointerEvents: 'none',
+      zIndex: '45',
+      display: 'none',
+      fontFamily: "'Geist Variable', -apple-system, BlinkMacSystemFont, sans-serif",
+      userSelect: 'none',
+      WebkitUserSelect: 'none',
+    });
 
-    // Outer ring: 112 px
+    const moveLabel = document.createElement('div');
+    moveLabel.textContent = 'MOVE  ·  HOLD & DRAG';
+    Object.assign(moveLabel.style, {
+      position: 'fixed',
+      left: 'calc(env(safe-area-inset-left, 0px) + 28px)',
+      bottom: 'calc(env(safe-area-inset-bottom, 0px) + 132px)',
+      color: 'rgba(28, 27, 25, 0.68)',
+      fontSize: '9px',
+      fontWeight: '600',
+      letterSpacing: '0.13em',
+      whiteSpace: 'nowrap',
+      textShadow: '0 1px 8px rgba(255,255,255,0.75)',
+    });
+
+    const lookLabel = document.createElement('div');
+    lookLabel.textContent = 'DRAG TO LOOK';
+    Object.assign(lookLabel.style, {
+      position: 'fixed',
+      right: 'calc(env(safe-area-inset-right, 0px) + 22px)',
+      bottom: 'calc(env(safe-area-inset-bottom, 0px) + 132px)',
+      color: 'rgba(28, 27, 25, 0.68)',
+      fontSize: '9px',
+      fontWeight: '600',
+      letterSpacing: '0.13em',
+      whiteSpace: 'nowrap',
+      textShadow: '0 1px 8px rgba(255,255,255,0.75)',
+    });
+
     const ring = document.createElement('div');
-    ring.style.position = 'absolute';
-    ring.style.width = '112px';
-    ring.style.height = '112px';
-    ring.style.borderRadius = '9999px';
-    ring.style.border = '1px solid rgba(23, 20, 31, 0.16)';
-    ring.style.background = 'rgba(255, 255, 255, 0.40)';
-    ring.style.backdropFilter = 'blur(10px)';
-    ring.style.setProperty('-webkit-backdrop-filter', 'blur(10px)');
-    ring.style.boxShadow = '0 4px 16px rgba(45, 38, 62, 0.08)';
-    ring.style.transform = 'translate3d(-50%, -50%, 0)';
-    ring.style.transition = 'opacity 0.15s ease-out';
-    ring.style.opacity = '0';
+    ring.setAttribute('aria-hidden', 'true');
+    Object.assign(ring.style, {
+      position: 'fixed',
+      left: 'calc(env(safe-area-inset-left, 0px) + 18px)',
+      bottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)',
+      width: '104px',
+      height: '104px',
+      borderRadius: '50%',
+      border: '1px solid rgba(36, 34, 31, 0.18)',
+      background: 'rgba(250, 249, 246, 0.42)',
+      backdropFilter: 'blur(12px)',
+      WebkitBackdropFilter: 'blur(12px)',
+      boxShadow: '0 8px 28px rgba(28, 25, 22, 0.10), inset 0 1px 0 rgba(255,255,255,0.65)',
+      opacity: '0.72',
+      transition: 'opacity 140ms ease',
+      pointerEvents: 'none',
+      boxSizing: 'border-box',
+    });
 
-    // Inner knob: 48 px
     const knob = document.createElement('div');
-    knob.style.position = 'absolute';
-    knob.style.width = '48px';
-    knob.style.height = '48px';
-    knob.style.borderRadius = '9999px';
-    knob.style.border = '1px solid rgba(23, 20, 31, 0.18)';
-    knob.style.background = 'rgba(255, 255, 255, 0.85)';
-    knob.style.boxShadow = '0 2px 8px rgba(45, 38, 62, 0.12)';
-    knob.style.left = '32px';
-    knob.style.top = '32px';
-    knob.style.transform = 'translate3d(0, 0, 0)';
-    knob.style.willChange = 'transform';
-
+    Object.assign(knob.style, {
+      position: 'absolute',
+      width: '42px',
+      height: '42px',
+      left: '30px',
+      top: '30px',
+      borderRadius: '50%',
+      border: '1px solid rgba(36, 34, 31, 0.20)',
+      background: 'rgba(255, 255, 255, 0.88)',
+      boxShadow: '0 2px 10px rgba(28, 25, 22, 0.14), inset 0 1px 0 rgba(255,255,255,0.95)',
+      transform: 'translate3d(0, 0, 0)',
+      willChange: 'transform',
+      pointerEvents: 'none',
+    });
     ring.appendChild(knob);
-    container.appendChild(ring);
+
+    const runButton = document.createElement('button');
+    runButton.type = 'button';
+    runButton.textContent = 'RUN';
+    runButton.setAttribute('aria-label', 'Hold to run');
+    runButton.setAttribute('aria-pressed', 'false');
+    Object.assign(runButton.style, {
+      position: 'fixed',
+      right: 'calc(env(safe-area-inset-right, 0px) + 22px)',
+      bottom: 'calc(env(safe-area-inset-bottom, 0px) + 48px)',
+      width: '68px',
+      height: '40px',
+      borderRadius: '999px',
+      border: '1px solid rgba(36, 34, 31, 0.18)',
+      background: 'rgba(250, 249, 246, 0.90)',
+      color: 'rgba(28, 27, 25, 0.82)',
+      boxShadow: '0 6px 20px rgba(28, 25, 22, 0.10), inset 0 1px 0 rgba(255,255,255,0.85)',
+      fontSize: '10px',
+      fontWeight: '650',
+      letterSpacing: '0.16em',
+      pointerEvents: 'auto',
+      touchAction: 'none',
+      WebkitTapHighlightColor: 'transparent',
+      cursor: 'pointer',
+    });
+
+    container.append(moveLabel, lookLabel, ring, runButton);
     document.body.appendChild(container);
 
-    this.joystickContainer = container;
+    this.controlsContainer = container;
     this.joystickRing = ring;
     this.joystickKnob = knob;
+    this.runButton = runButton;
   }
 
   private bindEvents(): void {
     const el = this.targetElement;
 
-    // Keyboard
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (this.locked) return;
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (this.locked || isEditableTarget(event.target)) return;
+      this.keysDown.add(event.code);
 
-      this.keysDown.add(e.code);
-
-      if (e.code === 'KeyE' || e.code === 'Enter') {
+      if (event.code === 'KeyE' || event.code === 'Enter') {
         this.interactTriggered = true;
       }
-      if (e.code === 'Escape') {
+      if (event.code === 'Escape') {
         this.cancelTriggered = true;
+      }
+      if (event.code === 'Space' || event.code.startsWith('Arrow')) {
+        event.preventDefault();
       }
     };
 
-    const onKeyUp = (e: KeyboardEvent) => {
-      this.keysDown.delete(e.code);
+    const onKeyUp = (event: KeyboardEvent) => {
+      this.keysDown.delete(event.code);
     };
 
     const onBlur = () => {
       this.keysDown.clear();
       this.resetTouchState();
+      this.touchRunHeld = false;
+      this.updateRunButton();
     };
 
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('blur', onBlur);
-
-    // Pointer events (Touch & Mouse)
-    const onPointerDown = (e: PointerEvent) => {
+    const onPointerDown = (event: PointerEvent) => {
       if (this.locked) return;
 
       const rect = el.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      const w = rect.width;
-      const h = rect.height;
+      if (event.pointerType === 'touch') {
+        const padRect = this.joystickRing?.getBoundingClientRect();
+        const inMovePad = Boolean(
+          padRect &&
+            event.clientX >= padRect.left - 18 &&
+            event.clientX <= padRect.right + 18 &&
+            event.clientY >= padRect.top - 18 &&
+            event.clientY <= padRect.bottom + 18,
+        );
 
-      // Ignore touches that begin within 20 px of screen edges (system gestures)
-      if (e.pointerType === 'touch') {
-        if (e.clientX < 20 || e.clientX > window.innerWidth - 20 ||
-            e.clientY < 20 || e.clientY > window.innerHeight - 20) {
+        if (inMovePad && this.movePointerId === null && padRect) {
+          if (event.cancelable) event.preventDefault();
+          this.movePointerId = event.pointerId;
+          this.moveTouchStart = {
+            x: padRect.left + padRect.width / 2,
+            y: padRect.top + padRect.height / 2,
+          };
+          this.moveTouchCurrent = { x: event.clientX, y: event.clientY };
+          this.showJoystick();
+          try {
+            el.setPointerCapture(event.pointerId);
+          } catch {
+            // Pointer capture is not required on every browser.
+          }
+          this.updateJoystickKnob();
           return;
         }
+
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        if (
+          x >= rect.width * 0.48 &&
+          y < rect.height - 112 &&
+          this.lookPointerId === null
+        ) {
+          if (event.cancelable) event.preventDefault();
+          this.lookPointerId = event.pointerId;
+          this.lookTouchLast = { x: event.clientX, y: event.clientY };
+          try {
+            el.setPointerCapture(event.pointerId);
+          } catch {
+            // Pointer capture is not required on every browser.
+          }
+        }
+        return;
       }
 
-      if (e.pointerType === 'touch') {
-        // Lower-left 50% for movement joystick
-        if (x < w * 0.5 && y > h * 0.45 && this.movePointerId === null) {
-          this.movePointerId = e.pointerId;
-          this.moveTouchStart = { x: e.clientX, y: e.clientY };
-          this.moveTouchCurrent = { x: e.clientX, y: e.clientY };
-          this.showJoystick(e.clientX, e.clientY);
-          try {
-            el.setPointerCapture(e.pointerId);
-          } catch {
-            // Non-critical if capture fails
-          }
-          return;
-        }
-
-        // Right 50% for drag-to-look
-        if (x >= w * 0.45 && this.lookPointerId === null) {
-          this.lookPointerId = e.pointerId;
-          this.lookTouchLast = { x: e.clientX, y: e.clientY };
-          try {
-            el.setPointerCapture(e.pointerId);
-          } catch {
-            // Non-critical
-          }
-          return;
-        }
-      } else if (e.pointerType === 'mouse') {
-        if (e.button === 0) {
-          this.isMouseDragging = true;
-          this.mouseLast = { x: e.clientX, y: e.clientY };
-        }
+      if (event.pointerType === 'mouse' && event.button === 0) {
+        this.isMouseDragging = true;
+        this.mouseLast = { x: event.clientX, y: event.clientY };
       }
     };
 
-    const onPointerMove = (e: PointerEvent) => {
+    const onPointerMove = (event: PointerEvent) => {
       if (this.locked) return;
 
-      if (e.pointerId === this.movePointerId) {
-        this.moveTouchCurrent = { x: e.clientX, y: e.clientY };
+      if (event.pointerId === this.movePointerId) {
+        if (event.cancelable) event.preventDefault();
+        this.moveTouchCurrent = { x: event.clientX, y: event.clientY };
         this.updateJoystickKnob();
-      } else if (e.pointerId === this.lookPointerId) {
-        const dx = e.clientX - this.lookTouchLast.x;
-        const dy = e.clientY - this.lookTouchLast.y;
-        this.lookTouchLast = { x: e.clientX, y: e.clientY };
-
-        // Scale by viewport size: standard ~0.0045 rad/px
-        const scale = 1.0 / Math.max(0.6, window.devicePixelRatio || 1);
-        const sens = 0.0045 * scale;
-        this.state.lookDeltaYaw -= dx * sens;
-        this.state.lookDeltaPitch -= dy * sens;
-      } else if (this.isMouseDragging && e.pointerType === 'mouse') {
-        const dx = e.clientX - this.mouseLast.x;
-        const dy = e.clientY - this.mouseLast.y;
-        this.mouseLast = { x: e.clientX, y: e.clientY };
-
-        const sens = 0.0022;
-        this.state.lookDeltaYaw -= dx * sens;
-        this.state.lookDeltaPitch -= dy * sens;
+      } else if (event.pointerId === this.lookPointerId) {
+        if (event.cancelable) event.preventDefault();
+        const dx = event.clientX - this.lookTouchLast.x;
+        const dy = event.clientY - this.lookTouchLast.y;
+        this.lookTouchLast = { x: event.clientX, y: event.clientY };
+        this.state.lookDeltaYaw -= THREEClamp(dx, 90) * 0.0032;
+        this.state.lookDeltaPitch -= THREEClamp(dy, 90) * 0.0030;
+      } else if (this.isMouseDragging && event.pointerType === 'mouse') {
+        const dx = event.clientX - this.mouseLast.x;
+        const dy = event.clientY - this.mouseLast.y;
+        this.mouseLast = { x: event.clientX, y: event.clientY };
+        this.state.lookDeltaYaw -= THREEClamp(dx, 120) * 0.0022;
+        this.state.lookDeltaPitch -= THREEClamp(dy, 120) * 0.0022;
       }
     };
 
-    const onPointerUpOrCancel = (e: PointerEvent) => {
-      if (e.pointerId === this.movePointerId) {
+    const onPointerUpOrCancel = (event: PointerEvent) => {
+      if (event.pointerId === this.movePointerId) {
+        const pointerId = this.movePointerId;
         this.movePointerId = null;
         this.hideJoystick();
+        try {
+          if (el.hasPointerCapture(pointerId)) el.releasePointerCapture(pointerId);
+        } catch {
+          // The browser may already have released the pointer.
+        }
       }
-      if (e.pointerId === this.lookPointerId) {
+      if (event.pointerId === this.lookPointerId) {
+        const pointerId = this.lookPointerId;
         this.lookPointerId = null;
+        try {
+          if (el.hasPointerCapture(pointerId)) el.releasePointerCapture(pointerId);
+        } catch {
+          // The browser may already have released the pointer.
+        }
       }
-      if (e.pointerType === 'mouse' && e.button === 0) {
+      if (event.pointerType === 'mouse' && event.button === 0) {
         this.isMouseDragging = false;
       }
     };
 
-    // Pointer lock for desktop mouse click look
-    const onCanvasClick = (e: MouseEvent) => {
-      if (this.locked) return;
-      if ('pointerType' in e && (e as unknown as { pointerType: string }).pointerType === 'touch') return;
-      if (document.pointerLockElement !== el && !this.isMouseDragging) {
-        // Optional pointer lock request on desktop
-        try {
-          el.requestPointerLock?.();
-        } catch {
-          // Ignore
-        }
+    const onRunPointerDown = (event: PointerEvent) => {
+      if (this.locked || event.button !== 0 && event.pointerType === 'mouse') return;
+      if (event.cancelable) event.preventDefault();
+      this.runPointerId = event.pointerId;
+      this.touchRunHeld = true;
+      this.updateRunButton();
+      try {
+        this.runButton?.setPointerCapture(event.pointerId);
+      } catch {
+        // Pointer capture is optional.
       }
     };
 
-    const onPointerLockMove = (e: MouseEvent) => {
-      if (this.locked) return;
-      if (document.pointerLockElement === el) {
-        const sens = 0.0022;
-        this.state.lookDeltaYaw -= e.movementX * sens;
-        this.state.lookDeltaPitch -= e.movementY * sens;
+    const onRunPointerUp = (event: PointerEvent) => {
+      if (this.runPointerId !== null && event.pointerId === this.runPointerId) {
+        this.runPointerId = null;
+        this.touchRunHeld = false;
+        this.updateRunButton();
       }
     };
 
-    el.addEventListener('pointerdown', onPointerDown);
-    el.addEventListener('pointermove', onPointerMove);
+    const onVisibilityChange = () => {
+      if (document.hidden) this.reset();
+    };
+
+    el.addEventListener('pointerdown', onPointerDown, { passive: false });
+    el.addEventListener('pointermove', onPointerMove, { passive: false });
     el.addEventListener('pointerup', onPointerUpOrCancel);
     el.addEventListener('pointercancel', onPointerUpOrCancel);
-    el.addEventListener('click', onCanvasClick);
-    document.addEventListener('mousemove', onPointerLockMove);
-
-    // Pause input on tab hidden
-    const onVisibilityChange = () => {
-      if (document.hidden) {
-        this.reset();
-      }
-    };
+    el.addEventListener('lostpointercapture', onPointerUpOrCancel);
+    window.addEventListener('pointerup', onRunPointerUp);
+    window.addEventListener('pointercancel', onRunPointerUp);
+    this.runButton?.addEventListener('pointerdown', onRunPointerDown, { passive: false });
     document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
 
     this.unbindCallbacks.push(
-      () => window.removeEventListener('keydown', onKeyDown),
-      () => window.removeEventListener('keyup', onKeyUp),
-      () => window.removeEventListener('blur', onBlur),
       () => el.removeEventListener('pointerdown', onPointerDown),
       () => el.removeEventListener('pointermove', onPointerMove),
       () => el.removeEventListener('pointerup', onPointerUpOrCancel),
       () => el.removeEventListener('pointercancel', onPointerUpOrCancel),
-      () => el.removeEventListener('click', onCanvasClick),
-      () => document.removeEventListener('mousemove', onPointerLockMove),
+      () => el.removeEventListener('lostpointercapture', onPointerUpOrCancel),
+      () => window.removeEventListener('pointerup', onRunPointerUp),
+      () => window.removeEventListener('pointercancel', onRunPointerUp),
+      () => this.runButton?.removeEventListener('pointerdown', onRunPointerDown),
       () => document.removeEventListener('visibilitychange', onVisibilityChange),
+      () => window.removeEventListener('keydown', onKeyDown),
+      () => window.removeEventListener('keyup', onKeyUp),
+      () => window.removeEventListener('blur', onBlur),
     );
   }
 
-  private showJoystick(clientX: number, clientY: number): void {
-    if (!this.joystickContainer || !this.joystickRing) return;
-    this.joystickContainer.style.display = 'block';
-    this.joystickRing.style.left = `${clientX}px`;
-    this.joystickRing.style.top = `${clientY}px`;
-    this.joystickRing.style.opacity = '1';
-
-    // First-run guidance: hint with soft pulse for 3 seconds on first touch
-    if (!this.hasShownFirstTouchPulse) {
-      this.hasShownFirstTouchPulse = true;
-      this.joystickRing.style.transition = 'opacity 0.15s ease-out, transform 0.6s ease-in-out';
-      this.joystickRing.style.transform = 'translate3d(-50%, -50%, 0) scale(1.08)';
-      setTimeout(() => {
-        if (this.joystickRing) {
-          this.joystickRing.style.transform = 'translate3d(-50%, -50%, 0) scale(1.0)';
-        }
-      }, 600);
-      setTimeout(() => {
-        if (this.joystickRing) {
-          this.joystickRing.style.transform = 'translate3d(-50%, -50%, 0) scale(1.06)';
-        }
-      }, 1400);
-      setTimeout(() => {
-        if (this.joystickRing) {
-          this.joystickRing.style.transform = 'translate3d(-50%, -50%, 0) scale(1.0)';
-        }
-      }, 2000);
-      setTimeout(() => {
-        if (this.joystickRing) {
-          this.joystickRing.style.transition = 'opacity 0.15s ease-out';
-        }
-      }, 3000);
-    }
-
-    if (this.joystickKnob) {
-      this.joystickKnob.style.transform = 'translate3d(0, 0, 0)';
-    }
-    this.wasRunningHapticFired = false;
+  private showJoystick(): void {
+    if (this.joystickRing) this.joystickRing.style.opacity = '0.98';
   }
 
   private hideJoystick(): void {
-    if (!this.joystickRing) return;
-    this.joystickRing.style.opacity = '0';
-    setTimeout(() => {
-      if (this.movePointerId === null && this.joystickContainer) {
-        this.joystickContainer.style.display = 'none';
-      }
-    }, 150);
+    if (this.joystickRing) this.joystickRing.style.opacity = '0.72';
+    if (this.joystickKnob) {
+      this.joystickKnob.style.transform = 'translate3d(0, 0, 0)';
+    }
     this.state.moveX = 0;
     this.state.moveY = 0;
-    this.state.run = false;
-    this.wasRunningHapticFired = false;
   }
 
   private updateJoystickKnob(): void {
-    if (!this.joystickKnob) return;
     const dx = this.moveTouchCurrent.x - this.moveTouchStart.x;
     const dy = this.moveTouchCurrent.y - this.moveTouchStart.y;
-    const dist = Math.hypot(dx, dy);
+    const stick = normalizeTouchStick(
+      dx,
+      dy,
+      TOUCH_STICK_RADIUS,
+      this.options.assistedMovement ? 0.22 : TOUCH_STICK_DEADZONE,
+    );
 
-    const maxTravel = 56; // px
-    const deadzone = this.options.assistedMovement ? 0.24 : 0.12;
-
-    const clampedDist = Math.min(dist, maxTravel);
-    const angle = Math.atan2(dy, dx);
-    const knobX = Math.cos(angle) * clampedDist;
-    const knobY = Math.sin(angle) * clampedDist;
-
-    this.joystickKnob.style.transform = `translate3d(${knobX}px, ${knobY}px, 0)`;
-
-    // Normalised magnitude 0..1
-    const norm = clampedDist / maxTravel;
-    if (norm < deadzone) {
-      this.state.moveX = 0;
-      this.state.moveY = 0;
-      this.state.run = false;
-      return;
+    if (this.joystickKnob) {
+      this.joystickKnob.style.transform = `translate3d(${stick.knobX}px, ${stick.knobY}px, 0)`;
     }
+    this.state.moveX = stick.moveX;
+    this.state.moveY = stick.moveY;
+  }
 
-    // Response curve x^1.4
-    const remapped = (norm - deadzone) / (1 - deadzone);
-    const curved = Math.pow(remapped, 1.4);
-
-    this.state.moveX = Math.cos(angle) * curved;
-    this.state.moveY = -Math.sin(angle) * curved; // Forward is +Y in input space
-
-    // Run when joystick passes 85%
-    const isRunning = norm >= 0.85;
-    if (isRunning && !this.wasRunningHapticFired) {
-      haptic('soft');
-      this.wasRunningHapticFired = true;
-    } else if (!isRunning) {
-      this.wasRunningHapticFired = false;
-    }
-    this.state.run = isRunning;
+  private updateRunButton(): void {
+    if (!this.runButton) return;
+    this.runButton.setAttribute('aria-pressed', String(this.touchRunHeld));
+    this.runButton.style.background = this.touchRunHeld
+      ? 'rgba(237, 231, 220, 0.98)'
+      : 'rgba(250, 249, 246, 0.90)';
+    this.runButton.style.borderColor = this.touchRunHeld
+      ? 'rgba(36, 34, 31, 0.40)'
+      : 'rgba(36, 34, 31, 0.18)';
+    this.runButton.style.transform = this.touchRunHeld ? 'scale(0.97)' : 'scale(1)';
   }
 
   triggerInteract(): void {
@@ -411,10 +493,6 @@ export class InputManager {
     this.cancelTriggered = true;
   }
 
-  /**
-   * Reads and polls the input state for the current frame.
-   * Clears transient delta terms.
-   */
   sample(): Readonly<InputState> {
     if (this.locked) {
       return {
@@ -428,7 +506,6 @@ export class InputManager {
       };
     }
 
-    // 1. Process keyboard if touch not active
     if (this.movePointerId === null) {
       let kx = 0;
       let ky = 0;
@@ -437,32 +514,25 @@ export class InputManager {
       if (this.keysDown.has('KeyW') || this.keysDown.has('ArrowUp')) ky += 1;
       if (this.keysDown.has('KeyS') || this.keysDown.has('ArrowDown')) ky -= 1;
 
-      const len = Math.hypot(kx, ky);
-      if (len > 0.001) {
-        this.state.moveX = kx / len;
-        this.state.moveY = ky / len;
-      } else {
-        this.state.moveX = 0;
-        this.state.moveY = 0;
-      }
-
-      this.state.run = this.keysDown.has('ShiftLeft') || this.keysDown.has('ShiftRight');
+      const length = Math.hypot(kx, ky);
+      this.state.moveX = length > 0.001 ? kx / length : 0;
+      this.state.moveY = length > 0.001 ? ky / length : 0;
     }
 
-    // 2. Poll Gamepad
-    this.pollGamepad();
+    const gamepadRun = this.pollGamepad();
+    this.state.run =
+      this.keysDown.has('ShiftLeft') ||
+      this.keysDown.has('ShiftRight') ||
+      this.touchRunHeld ||
+      gamepadRun;
 
-    // 3. One-shot triggers
     this.state.interact = this.interactTriggered;
     this.state.cancel = this.cancelTriggered;
     this.interactTriggered = false;
     this.cancelTriggered = false;
 
-    // Snapshot
     const outYaw = this.state.lookDeltaYaw;
     const outPitch = this.state.lookDeltaPitch;
-
-    // Reset frame deltas
     this.state.lookDeltaYaw = 0;
     this.state.lookDeltaPitch = 0;
 
@@ -477,41 +547,38 @@ export class InputManager {
     };
   }
 
-  private pollGamepad(): void {
-    if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
-    const gamepads = navigator.getGamepads();
-    const gp = gamepads[0] || gamepads[1];
-    if (!gp) return;
+  private pollGamepad(): boolean {
+    if (typeof navigator === 'undefined' || !navigator.getGamepads) return false;
+    const pads = navigator.getGamepads();
+    const gamepad = pads[0] || pads[1];
+    if (!gamepad) return false;
 
-    // Axes 0, 1: Move
-    const lx = gp.axes[0] ?? 0;
-    const ly = gp.axes[1] ?? 0;
+    const x = gamepad.axes[0] ?? 0;
+    const y = gamepad.axes[1] ?? 0;
     const deadzone = this.options.assistedMovement ? 0.20 : 0.12;
-    const dist = Math.hypot(lx, ly);
+    const distance = Math.hypot(x, y);
 
-    if (dist > deadzone) {
-      const remapped = (dist - deadzone) / (1 - deadzone);
-      const curved = Math.pow(remapped, 1.4);
-      const angle = Math.atan2(ly, lx);
-      this.state.moveX = Math.cos(angle) * curved;
-      this.state.moveY = -Math.sin(angle) * curved;
+    if (distance > deadzone) {
+      const remapped = (distance - deadzone) / (1 - deadzone);
+      const strength = Math.pow(remapped, 1.15);
+      this.state.moveX = (x / distance) * strength;
+      this.state.moveY = -(y / distance) * strength;
     }
 
-    // Axes 2, 3: Look
-    const rx = gp.axes[2] ?? 0;
-    const ry = gp.axes[3] ?? 0;
+    const rx = gamepad.axes[2] ?? 0;
+    const ry = gamepad.axes[3] ?? 0;
     if (Math.hypot(rx, ry) > 0.12) {
-      const sens = 0.045;
-      this.state.lookDeltaYaw -= rx * sens;
-      this.state.lookDeltaPitch -= ry * sens;
+      this.state.lookDeltaYaw -= rx * 0.035;
+      this.state.lookDeltaPitch -= ry * 0.035;
     }
 
-    // Buttons: 0=A (interact), 1=B (cancel), 7=RT (run)
-    if (gp.buttons[0]?.pressed) this.interactTriggered = true;
-    if (gp.buttons[1]?.pressed) this.cancelTriggered = true;
-    if (gp.buttons[6]?.pressed || gp.buttons[7]?.pressed || gp.buttons[10]?.pressed) {
-      this.state.run = true;
-    }
+    if (gamepad.buttons[0]?.pressed) this.interactTriggered = true;
+    if (gamepad.buttons[1]?.pressed) this.cancelTriggered = true;
+    return Boolean(
+      gamepad.buttons[6]?.pressed ||
+      gamepad.buttons[7]?.pressed ||
+      gamepad.buttons[10]?.pressed
+    );
   }
 
   private resetTouchState(): void {
@@ -524,6 +591,9 @@ export class InputManager {
   reset(): void {
     this.keysDown.clear();
     this.resetTouchState();
+    this.touchRunHeld = false;
+    this.runPointerId = null;
+    this.updateRunButton();
     this.state.moveX = 0;
     this.state.moveY = 0;
     this.state.lookDeltaYaw = 0;
@@ -537,12 +607,15 @@ export class InputManager {
 
   dispose(): void {
     this.reset();
-    for (const unbind of this.unbindCallbacks) {
-      unbind();
-    }
+    for (const unbind of this.unbindCallbacks) unbind();
     this.unbindCallbacks.length = 0;
-    if (this.joystickContainer && this.joystickContainer.parentNode) {
-      this.joystickContainer.parentNode.removeChild(this.joystickContainer);
+    if (this.controlsContainer?.parentNode) {
+      this.controlsContainer.parentNode.removeChild(this.controlsContainer);
     }
+    this.targetElement.style.touchAction = this.originalTouchAction;
   }
+}
+
+function THREEClamp(value: number, limit: number): number {
+  return Math.max(-limit, Math.min(limit, value));
 }
