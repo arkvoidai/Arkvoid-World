@@ -487,7 +487,8 @@ export async function getMemories(
 // -------------------------------------------------------------
 // Expose on window.__ark ONLY in dev builds with ?auth=1
 // -------------------------------------------------------------
-if (import.meta.env.DEV && typeof window !== 'undefined') {
+const isDev = Boolean(typeof import.meta !== 'undefined' && import.meta.env?.DEV);
+if (isDev && typeof window !== 'undefined') {
   try {
     const params = new URLSearchParams(window.location.search);
     if (params.get('auth') === '1') {

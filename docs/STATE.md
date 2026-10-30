@@ -227,9 +227,20 @@
     - Obstacle collision against wall, tree trunk (radial clearance), and island rim.
     - Slope sliding along 35° slope and uphill blocking at 40° slope.
   - Synthetic Walk Tester (`?walk=1`):
-    - 30-second automated navigation circuit across Island A waypoints.
-    - Verifies 0 frames stuck > 2s and 0 camera geometry penetrations, reporting results to `window.__ARKVOID_WALK_TEST__`.
-  - Comprehensive unit test suite in `src/engine/locomotion/step13.test.ts` (all 5 tests passing).
+- **Step 14 (Accounts, Data Layer and World Clock Sync)**:
+  - Built `src/config/copy.ts`: calm copy for `ERROR_MESSAGES`, `POSTGRES_ERROR_MESSAGES`, and `ACCOUNT_COPY`.
+  - Built `src/net/supabase.ts`: singleton Supabase client (`storageKey: 'arkvoid.auth'`, `realtime: { eventsPerSecond: 10 }`, `autoRefreshToken: true`, `detectSessionInUrl: true`, `persistSession: true`), `ConfigError`, `withTimeout` (8 s timeout), non-throwing `ok`/`err` helpers.
+  - Built `src/net/errors.ts`: typed error union (`NETWORK`, `AUTH_EXPIRED`, `RATE_LIMITED`, `VALIDATION`, `FORBIDDEN`, `SERVER`, `UNKNOWN`) and strict Postgres error mapper matching all specified database exceptions.
+  - Built `src/net/captcha.ts`: Cloudflare Turnstile token loader supporting optional site key verification.
+  - Built `src/net/api.ts`: full typed data access layer with 8 s timeout, 1 retry with 400 ms backoff on network errors only, non-throwing `Result<T>` discriminated unions, typed table reads (`getCharacter`, `getQuestStates`, `getQuestDefs`, `getEvents`, `getNpcs`, `getTrust`, `getMemories`), RPC functions (`create_character`, `gather`, `attempt_breakthrough`, `start_retreat`, `claim_retreat`, `report_reach`, `save_position`, `away_report`, `report_player`, `send_feedback`, `log_client_error`, `public_stats`, `delete_my_data`, `world_now`), and window exposure on `window.__ark` strictly in dev builds when `?auth=1`.
+  - Built `src/state/auth.ts`: Zustand store managing auth state (`loading` | `signed-out` | `guest` | `member`), anonymous guest login, email code flow with 30 s resend cooldown and 5-attempt lockout (60 s), Google OAuth, guest email upgrade without losing progress (`updateUser`), token refresh on tab visibility, two-tab sync via storage events, OAuth URL cleanup via `history.replaceState`, and `deleteMyData`.
+  - Built `src/net/clockSync.ts`: clock synchronization computing round-trip midpoint offset from `world_now()`, passing offset to `setServerOffset(ms)`, re-syncing every 10 minutes and on tab refocus, with dev skew validation (< 1 world minute).
+  - Built `src/state/game.ts`: Zustand game store with `character`, `questStates`, `questDefs`, `npcs`, `trust`, `recentEvents`, `retreat`, `awayReport`, and selectors (`breathCap = 40 + 30*stage + 80*(realm-1)`, `selectDawnFraction`, `selectDuskFraction`, `selectRealmName`, `selectCanBreakthrough`). Mechanics enforce 3x gather multiplier during dawn/dusk windows and +25% matching leaning bonus.
+  - Built `src/net/positionSaver.ts`: background throttled position saver (at most once every 8 s while moving, immediately on area change, and on `visibilitychange` hidden and `pagehide`), with `areaAt` derivation and strict enforcement that `away_report` runs prior to the first save.
+  - Built `src/app/bootstrap.ts`: session bootstrap initializing clock sync and auth, loading character and initial game data, routing to `AUTH_READY(hasCharacter)` or `NO_SESSION`.
+  - Built `src/ui/AccountSheet.tsx`: Pearl design system sheet accessible via `?account=1` or on session failure, with guest path preservation ("Save your path", "Email me a code", "Continue with Google"), 6-digit code inputs with paste and iOS autofill support, sign out, and two-step data deletion.
+  - Built documentation: `docs/DATA_CONTRACT.md` and `docs/SECURITY_TESTS.md` (manual recipes a–g with exact `window.__ark` console snippets).
+  - Built unit tests in `src/net/step14.test.ts` (66 total tests passing).
 
 ## Decisions
 - Locomotion, player kinematics, camera rig, and candidate evaluation run entirely on CPU with zero memory allocations in the frame tick path.
@@ -243,6 +254,9 @@
 - Animator uses fixed pre-allocated pose buffers and vector scratches, guaranteeing zero memory allocations per frame and maintaining tick execution times under 0.15 ms on desktop and 0.35 ms on mobile.
 - Proximity LOD distance thresholds are 14 m (Near), 40 m (Mid), 90 m (Far), with hard caps of at most 8 Near instances on desktop and 4 on mobile, automatically degrading more distant wanderers to prevent GPU fill-rate exhaustion.
 - The local player position updates `WindSystem.setPushPoint(0, x, y, z, 0.95)`, naturally driving trampling and deflection in `GrassSystem` blades as the player walks across the meadows.
+- All database mutation operations are strictly routed through authenticated Supabase RPC functions; direct client INSERT/UPDATE/DELETE queries are blocked by RLS policies.
+- Network API calls enforce an 8-second timeout with at most one automatic retry with 400 ms backoff on network failures only, guaranteeing that UI callers never receive unhandled exceptions.
+- Position saving operates asynchronously on a background throttle (every 8 s while moving, immediately upon crossing island area bounds), strictly queued until `away_report()` has finished to maintain accurate offline progress accounting.
 
 ## Known issues
 - PNG icon binaries (`icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon-180.png`) under `public/icons/` must be supplied by the founder as documented in `public/icons/README.md`; `public/icons/favicon.svg` is active now.

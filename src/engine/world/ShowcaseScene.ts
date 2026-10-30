@@ -429,12 +429,13 @@ export class ShowcaseWorldSystem implements System {
 
     this.playerController = new PlayerController(localPlayer, {
       assistedMovement: false,
-      initialPosition: initialPos,
-      initialYaw: initialYaw,
       onEdgeToast: (message) => {
         ctx.events.emit('toast', { message });
       },
     });
+    this.playerController.position.copy(initialPos);
+    this.playerController.facing = initialYaw;
+    this.playerController.targetFacing = initialYaw;
 
     this.inputManager = new InputManager(ctx.renderer.domElement, {
       assistedMovement: false,

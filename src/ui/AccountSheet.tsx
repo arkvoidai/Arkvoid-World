@@ -12,8 +12,8 @@ export function AccountSheet({ open, onClose }: AccountSheetProps) {
   const {
     status,
     user,
-    emailResendCooldown,
-    emailLockoutSeconds,
+    emailCooldownSeconds,
+    isLockedOut,
     sessionFailedMessage,
     error: authError,
     signInGuest,
@@ -36,18 +36,16 @@ export function AccountSheet({ open, onClose }: AccountSheetProps) {
 
   const digitRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Reset local state when opened/closed
-  useEffect(() => {
-    if (!open) {
-      setActiveTab('options');
-      setEmailInput('');
-      setCodeSent(false);
-      setCodeDigits(['', '', '', '', '', '']);
-      setIsSubmitting(false);
-      setConfirmDelete(false);
-      setLocalMessage(null);
-    }
-  }, [open]);
+  const handleClose = () => {
+    setActiveTab('options');
+    setEmailInput('');
+    setCodeSent(false);
+    setCodeDigits(['', '', '', '', '', '']);
+    setIsSubmitting(false);
+    setConfirmDelete(false);
+    setLocalMessage(null);
+    onClose();
+  };
 
   // Autofocus first digit box once code is sent
   useEffect(() => {
@@ -62,12 +60,10 @@ export function AccountSheet({ open, onClose }: AccountSheetProps) {
     setIsSubmitting(true);
     setLocalMessage(null);
 
-    let ok = false;
-    if (status === 'guest') {
-      ok = await upgradeGuestWithEmail(emailInput.trim());
-    } else {
-      ok = await sendEmailCode(emailInput.trim());
-    }
+    const ok =
+      status === 'guest'
+        ? await upgradeGuestWithEmail(emailInput.trim())
+        : await sendEmailCode(emailInput.trim());
 
     setIsSubmitting(false);
     if (ok) {
@@ -138,7 +134,7 @@ export function AccountSheet({ open, onClose }: AccountSheetProps) {
     setIsSubmitting(false);
 
     if (ok) {
-      onClose();
+      handleClose();
     }
   };
 
@@ -155,7 +151,7 @@ export function AccountSheet({ open, onClose }: AccountSheetProps) {
     const ok = await deleteMyData();
     setIsSubmitting(false);
     if (ok) {
-      onClose();
+      handleClose();
     }
   };
 
@@ -165,7 +161,7 @@ export function AccountSheet({ open, onClose }: AccountSheetProps) {
   return (
     <Sheet
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       title={isMember ? 'Account' : ACCOUNT_COPY.sheetTitle}
       initialDetent="medium"
     >
@@ -252,13 +248,13 @@ export function AccountSheet({ open, onClose }: AccountSheetProps) {
                       </button>
                       <button
                         type="submit"
-                        disabled={isSubmitting || emailLockoutSeconds > 0}
+                        disabled={isSubmitting || isLockedOut}
                         className="flex-1 rounded-pill border border-line bg-sand py-2.5 text-xs font-medium text-ink hover:bg-surface disabled:opacity-50 transition-colors"
                       >
                         {isSubmitting
                           ? 'Sending...'
-                          : emailLockoutSeconds > 0
-                          ? `Locked for ${emailLockoutSeconds}s`
+                          : isLockedOut
+                          ? `Locked for ${emailCooldownSeconds}s`
                           : ACCOUNT_COPY.sendCodeButton}
                       </button>
                     </div>
@@ -289,14 +285,14 @@ export function AccountSheet({ open, onClose }: AccountSheetProps) {
                     <div className="flex items-center justify-between pt-1">
                       <button
                         type="button"
-                        disabled={emailResendCooldown > 0 || emailLockoutSeconds > 0 || isSubmitting}
+                        disabled={emailCooldownSeconds > 0 || isLockedOut || isSubmitting}
                         onClick={() => handleSendEmail()}
                         className="text-xs text-muted hover:text-ink disabled:opacity-40 transition-colors"
                       >
-                        {emailResendCooldown > 0
-                          ? `Resend in ${emailResendCooldown}s`
-                          : emailLockoutSeconds > 0
-                          ? `Try again in ${emailLockoutSeconds}s`
+                        {emailCooldownSeconds > 0
+                          ? `Resend in ${emailCooldownSeconds}s`
+                          : isLockedOut
+                          ? `Try again in ${emailCooldownSeconds}s`
                           : ACCOUNT_COPY.resendCode}
                       </button>
                       <button
@@ -328,7 +324,7 @@ export function AccountSheet({ open, onClose }: AccountSheetProps) {
           <p className="font-serif text-xs text-ink-2">{localMessage}</p>
         )}
         {authError && (
-          <p className="font-serif text-xs text-orange">{authError}</p>
+          <p className="font-serif text-xs text-orange">{authError.message}</p>
         )}
 
         {/* Delete My Data Zone (Two-step confirm) */}

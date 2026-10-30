@@ -37,7 +37,7 @@ export function getSupabase(): SupabaseClient {
       },
       realtime: {
         eventsPerSecond: 10,
-      },
+      } as unknown as Record<string, unknown>,
     });
   }
 

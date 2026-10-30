@@ -285,20 +285,21 @@ export const useGameStore = create<GameState>((set, get) => ({
   attemptBreakthrough: async () => {
     const res = await apiAttemptBreakthrough();
     if (res.ok) {
-      if (res.data.status === 'ok') {
+      const data = res.data;
+      if (data.status === 'ok') {
         set((state) => ({
           character: state.character
             ? {
                 ...state.character,
-                realm: res.data.realm,
-                stage: res.data.stage,
+                realm: data.realm,
+                stage: data.stage,
                 dawn: 0,
                 dusk: 0,
               }
             : null,
         }));
       }
-      return res.data;
+      return data;
     } else {
       set({ error: res.error.message });
       return null;
@@ -308,15 +309,16 @@ export const useGameStore = create<GameState>((set, get) => ({
   startRetreat: async (minutes) => {
     const res = await apiStartRetreat(minutes);
     if (res.ok) {
-      if (res.data.status === 'started') {
+      const data = res.data;
+      if (data.status === 'started') {
         set({
           retreat: {
             ready: false,
-            readyAt: res.data.ready_at,
+            readyAt: data.ready_at,
           },
         });
       }
-      return res.data;
+      return data;
     } else {
       set({ error: res.error.message });
       return null;
@@ -326,29 +328,30 @@ export const useGameStore = create<GameState>((set, get) => ({
   claimRetreat: async () => {
     const res = await apiClaimRetreat();
     if (res.ok) {
-      if (res.data.status === 'claimed') {
+      const data = res.data;
+      if (data.status === 'claimed') {
         set((state) => ({
           retreat: null,
           character: state.character
             ? {
                 ...state.character,
-                dawn: res.data.dawn,
-                dusk: res.data.dusk,
+                dawn: data.dawn,
+                dusk: data.dusk,
               }
             : null,
         }));
-      } else if (res.data.status === 'not_ready') {
+      } else if (data.status === 'not_ready') {
         set({
           retreat: {
             ready: false,
-            readyAt: res.data.ready_at,
-            secondsLeft: res.data.seconds_left,
+            readyAt: data.ready_at,
+            secondsLeft: data.seconds_left,
           },
         });
-      } else if (res.data.status === 'none') {
+      } else if (data.status === 'none') {
         set({ retreat: null });
       }
-      return res.data;
+      return data;
     } else {
       set({ error: res.error.message });
       return null;

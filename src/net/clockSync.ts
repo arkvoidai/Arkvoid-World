@@ -62,7 +62,8 @@ export async function syncClockNow(): Promise<number | null> {
     state.skewMinutes = skew;
 
     // One-time dev check: difference must be under 1 world minute
-    if (import.meta.env.DEV && !hasPerformedDevCheck) {
+    const isDev = Boolean(typeof import.meta !== 'undefined' && import.meta.env?.DEV);
+    if (isDev && !hasPerformedDevCheck) {
       hasPerformedDevCheck = true;
       if (skew > 1) {
         console.warn(
