@@ -112,6 +112,7 @@ export class ShowcaseWorldSystem implements System {
   private cameraRig: CameraRig | null = null;
   private interactables: InteractablesSystem | null = null;
   private npcDialogueCloseHandler: (() => void) | null = null;
+  private regionTravelHandler: ((event: Event) => void) | null = null;
   private actorsLineup: ActorsLineup | null = null;
   readonly isActorsMode: boolean = false;
   playerForm: FormId = 0;
@@ -550,6 +551,18 @@ export class ShowcaseWorldSystem implements System {
     });
 
     if (typeof window !== 'undefined') {
+      this.regionTravelHandler = (event: Event) => {
+        const detail = (event as CustomEvent<{ regionId?: string }>).detail;
+        const destination = EXPANDED_REGIONS.find((region) => region.id === detail?.regionId);
+        if (!destination || !this.playerController) return;
+        const x = destination.center.x - 115;
+        const z = destination.center.z + 125;
+        const y = heightAt(x, z) ?? destination.baseY;
+        this.playerController.teleport(x, y, z, 0);
+        this.localPlayer?.setAnimationState('idle', 0.2);
+        ctx.events.emit('toast', { message: 'Arrived in ' + destination.name });
+      };
+      window.addEventListener('arkvoid:travel-region', this.regionTravelHandler);
       this.npcDialogueCloseHandler = () => {
         this.playerController?.unlock('npc-dialogue');
         this.playerController?.setState('idle');
@@ -1205,6 +1218,10 @@ export class ShowcaseWorldSystem implements System {
     if (this.npcDialogueCloseHandler && typeof window !== 'undefined') {
       window.removeEventListener('arkvoid:npc-close', this.npcDialogueCloseHandler);
       this.npcDialogueCloseHandler = null;
+    }
+    if (this.regionTravelHandler && typeof window !== 'undefined') {
+      window.removeEventListener('arkvoid:travel-region', this.regionTravelHandler);
+      this.regionTravelHandler = null;
     }
     if (this.unsubCommand) {
       this.unsubCommand();

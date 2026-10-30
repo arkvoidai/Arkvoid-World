@@ -50,8 +50,8 @@ export function expandedRegionHeightAt(x: number, z: number): number | null {
   const n1 = smoothNoise(x, z, region.id.length);
   const n2 = smoothNoise(x * 0.43, z * 0.43, 31);
   if (region.id === 'veiled-peaks') {
-    const ridge = Math.max(0, Math.sin((dx + dz * 0.34) * 0.004)) * 92;
-    const shoulder = Math.max(0, Math.sin((dx * 0.6 - dz) * 0.0027)) * 54;
+    const ridge = Math.max(0, Math.sin((dx + dz * 0.34) * 0.0015)) * 42;
+    const shoulder = Math.max(0, Math.sin((dx * 0.6 - dz) * 0.0013)) * 24;
     return region.baseY + 5 + n1 * 5 + n2 * 8 + ridge * edge + shoulder * edge;
   }
   if (region.id === 'capital-valley') {

@@ -27,6 +27,7 @@ import { WorldLoadingScreen } from '@/ui/WorldLoadingScreen';
 import { Pill } from '@/ui/Pill';
 import ActorsLineupOverlay from '@/hud/ActorsLineupOverlay';
 import NpcDialogueOverlay from '@/hud/NpcDialogueOverlay';
+import WorldMapOverlay, { type MapRegionId } from '@/hud/WorldMapOverlay';
 import type { FormId, LeaningId } from '@/engine/actors/WandererMaterials';
 import type { AnimationStateName } from '@/engine/actors/Animator';
 
@@ -95,6 +96,7 @@ export default function WorldHost({
   const [splashMounted, setSplashMounted] = useState(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [activeNpcId, setActiveNpcId] = useState<string | null>(null);
+  const [showWorldMap, setShowWorldMap] = useState(false);
   const [benchmarkReport, setBenchmarkReport] = useState<BenchmarkReport | null>(null);
   const [auditResult, setAuditResult] = useState<SceneAuditResult | null>(null);
   const prompt = useWorldBridgeStore((s) => s.prompt);
@@ -337,6 +339,23 @@ export default function WorldHost({
       return null;
     }
   }, [syncVignetteOverlay]);
+
+  const currentRegionId = (() => {
+    const regions = [
+      { id: 'veiled-peaks', x: 2400, z: -3600 },
+      { id: 'capital-valley', x: -5000, z: -2400 },
+      { id: 'primordial-forest', x: -1800, z: 4200 },
+    ];
+    for (const region of regions) {
+      if (Math.hypot(playerCoarse.x - region.x, playerCoarse.z - region.z) < 760) return region.id;
+    }
+    return 'home-reach';
+  })();
+
+  const handleMapTravel = useCallback((regionId: MapRegionId) => {
+    window.dispatchEvent(new CustomEvent('arkvoid:travel-region', { detail: { regionId } }));
+    setShowWorldMap(false);
+  }, []);
 
   const handleSelectActorAnimation = useCallback((anim: AnimationStateName) => {
     showcaseRef.current?.getActorsLineup()?.setAnimation(anim);
@@ -581,6 +600,26 @@ export default function WorldHost({
             window.dispatchEvent(new Event('arkvoid:npc-close'));
             setActiveNpcId(null);
           }}
+        />
+      )}
+
+      {viewMode === 'world' && (
+        <button
+          type="button"
+          onClick={() => setShowWorldMap(true)}
+          className="pointer-events-auto fixed right-4 top-4 z-overlay flex items-center gap-2 rounded-full border border-white/60 bg-[#f8f6f0]/90 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#293a31] shadow-glass backdrop-blur-xl transition hover:bg-white sm:right-6 sm:top-6"
+          aria-label="Open world atlas"
+        >
+          <span className="text-sm">⌖</span>
+          World map
+        </button>
+      )}
+
+      {showWorldMap && viewMode === 'world' && (
+        <WorldMapOverlay
+          currentRegion={currentRegionId}
+          onClose={() => setShowWorldMap(false)}
+          onTravel={handleMapTravel}
         />
       )}
 
