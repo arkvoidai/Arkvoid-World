@@ -701,7 +701,7 @@ export class ShowcaseWorldSystem implements System {
 
     // Update preview figure slow rotation (14s full turn) in awakening mode
     if (this.viewMode === 'awakening' && this.previewWanderer) {
-      this.previewWanderer.rotation.y += dt * (Math.PI * 2 / 14);
+      this.previewWanderer.rotation.y += dt * (Math.PI * 2 / 30);
       this.previewWanderer.update(dt, 0, this.wind?.uniforms.uWindDir.value, 0.05);
     }
 

@@ -14,25 +14,25 @@ export interface LeaningColours {
 
 export const LEANING_PALETTE: Record<LeaningId, LeaningColours> = {
   dawn: {
-    primary: new THREE.Color('#EAE3D2'), // Ivory
-    secondary: new THREE.Color('#DFD4C0'), // Warm sand
-    trim: new THREE.Color('#FF7A1A'), // Orange trim
-    eyeGlow: new THREE.Color('#FF8A3D'), // Orange eye glow
-    hexEye: '#FF8A3D',
+    primary: new THREE.Color('#36594F'), // Deep jade silk
+    secondary: new THREE.Color('#78927C'), // Sage lining
+    trim: new THREE.Color('#C99B5C'), // Aged brass
+    eyeGlow: new THREE.Color('#F0C17B'), // Warm amber
+    hexEye: '#F0C17B',
   },
   dusk: {
-    primary: new THREE.Color('#2C2B4B'), // Deep indigo
-    secondary: new THREE.Color('#5B4A78'), // Lilac
-    trim: new THREE.Color('#D0CEE2'), // Silver trim
-    eyeGlow: new THREE.Color('#8B6CFF'), // Violet eye glow
-    hexEye: '#8B6CFF',
+    primary: new THREE.Color('#343F4B'), // Slate blue
+    secondary: new THREE.Color('#687B82'), // Mist silver
+    trim: new THREE.Color('#BFA58A'), // Weathered silver-brass
+    eyeGlow: new THREE.Color('#D9C1A1'), // Soft lantern gold
+    hexEye: '#D9C1A1',
   },
   still: {
-    primary: new THREE.Color('#F5F4F0'), // Soft white
-    secondary: new THREE.Color('#BFB9B0'), // Stone grey
-    trim: new THREE.Color('#D8A24A'), // Gold trim
-    eyeGlow: new THREE.Color('#FFFFFF'), // White eye glow
-    hexEye: '#FFFFFF',
+    primary: new THREE.Color('#E7E0D3'), // Warm porcelain
+    secondary: new THREE.Color('#B4AA96'), // Stone taupe
+    trim: new THREE.Color('#B98C52'), // Quiet gold
+    eyeGlow: new THREE.Color('#F5E9C9'), // Candlelight
+    hexEye: '#F5E9C9',
   },
 };
 
@@ -299,6 +299,50 @@ export class WandererMaterials {
         depthWrite: false,
       });
       this.eyeMaterials.set(leaning, mat);
+    }
+    return mat;
+  }
+
+  /** Shared natural skin material for faces, ears and hands. */
+  getSkinMaterial(): THREE.MeshStandardMaterial {
+    let mat = this.accessoryMaterials.get('skin') as THREE.MeshStandardMaterial;
+    if (!mat) {
+      mat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color('#C98F79'),
+        roughness: 0.72,
+        metalness: 0,
+      });
+      this.accessoryMaterials.set('skin', mat);
+    }
+    return mat;
+  }
+
+  /** Vertex-coloured face detail material keeps the complete facial feature set to one draw call. */
+  getFaceDetailMaterial(): THREE.MeshStandardMaterial {
+    let mat = this.accessoryMaterials.get('faceDetails') as THREE.MeshStandardMaterial;
+    if (!mat) {
+      mat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color('#FFFFFF'),
+        vertexColors: true,
+        roughness: 0.56,
+        metalness: 0,
+      });
+      this.accessoryMaterials.set('faceDetails', mat);
+    }
+    return mat;
+  }
+
+  /** Deep chestnut hair with a restrained satin response. */
+  getHairMaterial(): THREE.MeshStandardMaterial {
+    let mat = this.accessoryMaterials.get('hair') as THREE.MeshStandardMaterial;
+    if (!mat) {
+      mat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color('#30231F'),
+        roughness: 0.68,
+        metalness: 0,
+        side: THREE.DoubleSide,
+      });
+      this.accessoryMaterials.set('hair', mat);
     }
     return mat;
   }

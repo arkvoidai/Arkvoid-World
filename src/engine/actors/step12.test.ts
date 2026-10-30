@@ -43,6 +43,9 @@ test('Step 12: Wanderer body hierarchy, proportions and smooth lathe robe', () =
 
   // 1. Hierarchy verification
   const s = wanderer.skeleton;
+  assert.ok(wanderer.getObjectByName('face_eyes'), 'wanderer has visible sclera, irises and pupils');
+  assert.ok(wanderer.getObjectByName('face_features'), 'wanderer has a nose, cheeks, ears and mouth');
+  assert.ok(wanderer.getObjectByName('wanderer_hair'), 'wanderer has a sculpted hair silhouette');
   assert.ok(s.root, 'root exists');
   assert.ok(s.pelvis, 'pelvis exists');
   assert.ok(s.spine0 && s.spine1 && s.spine2, '3-link spine exists');
@@ -69,6 +72,10 @@ test('Step 12: Wanderer body hierarchy, proportions and smooth lathe robe', () =
   assert.equal(standardWanderer.heightScale, 1.0, 'standard height scale is 1.0');
   assert.ok(wardenWanderer.heightScale > 1.04, 'warden height scale is taller (1.80m / 1.72m)');
   assert.ok(sageWanderer.heightScale < 0.95, 'sage height scale is shorter (1.62m / 1.72m)');
+  for (const figure of [standardWanderer, wardenWanderer, sageWanderer]) {
+    assert.ok(figure.getObjectByName('face_eyes'), 'all forms keep a visible face');
+    assert.ok(figure.getObjectByName('face_features'), 'all forms keep facial structure');
+  }
 
   // 2. Continuous soft robe lathe geometry
   const robeMesh = wanderer.getObjectByName('wanderer_robe') as THREE.Mesh;
@@ -92,9 +99,9 @@ test('Step 12: WandererMaterials PBR fabric sheen, leanings palette and textures
   const mats = WandererMaterials.get();
 
   // Leanings palette colors
-  assert.equal(LEANING_PALETTE.dawn.hexEye, '#FF8A3D', 'dawn eye is orange #FF8A3D');
-  assert.equal(LEANING_PALETTE.dusk.hexEye, '#8B6CFF', 'dusk eye is violet #8B6CFF');
-  assert.equal(LEANING_PALETTE.still.hexEye, '#FFFFFF', 'still eye is white #FFFFFF');
+  assert.equal(LEANING_PALETTE.dawn.hexEye, '#F0C17B', 'dawn uses warm amber');
+  assert.equal(LEANING_PALETTE.dusk.hexEye, '#D9C1A1', 'dusk uses soft lantern gold');
+  assert.equal(LEANING_PALETTE.still.hexEye, '#F5E9C9', 'still uses candlelight');
 
   // Fabric MeshPhysicalMaterial with sheen
   const dawnFabric = mats.getFabricMaterial('dawn');

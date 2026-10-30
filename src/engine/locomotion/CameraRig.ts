@@ -137,11 +137,13 @@ export class CameraRig {
       this.timeSinceLastLookInput = 0;
     } else {
       this.timeSinceLastLookInput += clampedDt;
-      // Auto-recentre behind player when moving without look input for 2 s
-      if (isPlayerMoving && this.timeSinceLastLookInput > 2.0 && !this.activeShot) {
+      // Re-centre only after the player releases movement. Re-centering while a
+      // direction is held rotates the camera-relative input basis underneath the
+      // thumb, turning a straight drag into a circular path.
+      if (!isPlayerMoving && this.timeSinceLastLookInput > 2.4 && !this.activeShot && !this.isOrbitHandoff) {
         const targetYaw = playerFacing;
         const diff = Math.atan2(Math.sin(targetYaw - this.yaw), Math.cos(targetYaw - this.yaw));
-        this.yaw += diff * Math.min(1.0, clampedDt * 1.8);
+        this.yaw += diff * (1.0 - Math.exp(-clampedDt * 1.35));
       }
     }
 

@@ -58,22 +58,22 @@ function createLeafAtlas(): THREE.Texture {
     const data = new Uint8Array(size * size * 4);
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
-        const qx = ((x % 32) - 16) / 16;
-        const qy = ((y % 32) - 16) / 16;
-        const d = Math.hypot(qx, qy);
-        const inside = d < 0.78 ? 255 : 0;
-        const idx = (y * size + x) * 4;
-        data[idx] = 235;
-        data[idx + 1] = 220;
-        data[idx + 2] = 205;
-        data[idx + 3] = inside;
+        const lx = (x % 32 - 16) / 16;
+        const ly = (y % 32 - 16) / 16;
+        const taper = Math.pow(Math.max(0, Math.sin((ly + 1) * Math.PI * 0.5)), 0.72);
+        const inside = Math.abs(lx) < taper * 0.62 ? 255 : 0;
+        const index = (y * size + x) * 4;
+        data[index] = 86;
+        data[index + 1] = 112;
+        data[index + 2] = 68;
+        data[index + 3] = inside;
       }
     }
     const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.needsUpdate = true;
     cachedLeafAtlas = tex;
-    return cachedLeafAtlas;
+    return tex;
   }
 
   const canvas = document.createElement('canvas');
@@ -90,143 +90,177 @@ function createLeafAtlas(): THREE.Texture {
   ctx.clearRect(0, 0, 512, 512);
   const rng = createSeededRandom(314159);
 
-  // Helper to draw a palmate maple leaf at (cx, cy) with scale & angle
-  const drawMapleLeaf = (cx: number, cy: number, scale: number, angle: number, color: string) => {
+  const drawVeinedLeaf = (
+    cx: number,
+    cy: number,
+    scale: number,
+    angle: number,
+    base: string,
+    light: string,
+    style: 'maple' | 'oval' | 'fan' = 'oval',
+  ) => {
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(angle);
     ctx.scale(scale, scale);
-    ctx.fillStyle = color;
+
+    const gradient = ctx.createLinearGradient(0, -54, 0, 46);
+    gradient.addColorStop(0, light);
+    gradient.addColorStop(0.48, base);
+    gradient.addColorStop(1, base);
+    ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.moveTo(0, 42);
-    ctx.bezierCurveTo(-14, 28, -24, 34, -42, 18);
-    ctx.bezierCurveTo(-30, 8, -42, 4, -48, -16);
-    ctx.bezierCurveTo(-30, -12, -28, -24, -26, -44);
-    ctx.bezierCurveTo(-12, -32, -8, -38, 0, -52);
-    ctx.bezierCurveTo(8, -38, 12, -32, 26, -44);
-    ctx.bezierCurveTo(28, -24, 30, -12, 48, -16);
-    ctx.bezierCurveTo(42, 4, 30, 8, 42, 18);
-    ctx.bezierCurveTo(24, 34, 14, 28, 0, 42);
+
+    if (style === 'maple') {
+      ctx.moveTo(0, 45);
+      ctx.bezierCurveTo(-15, 27, -34, 30, -43, 13);
+      ctx.bezierCurveTo(-29, 8, -35, -8, -45, -18);
+      ctx.bezierCurveTo(-26, -17, -19, -30, -19, -45);
+      ctx.bezierCurveTo(-8, -34, -4, -41, 0, -54);
+      ctx.bezierCurveTo(4, -41, 8, -34, 19, -45);
+      ctx.bezierCurveTo(19, -30, 26, -17, 45, -18);
+      ctx.bezierCurveTo(35, -8, 29, 8, 43, 13);
+      ctx.bezierCurveTo(34, 30, 15, 27, 0, 45);
+    } else if (style === 'fan') {
+      ctx.moveTo(0, 44);
+      ctx.bezierCurveTo(-10, 23, -45, 18, -47, -15);
+      ctx.bezierCurveTo(-49, -41, -20, -53, 0, -48);
+      ctx.bezierCurveTo(20, -53, 49, -41, 47, -15);
+      ctx.bezierCurveTo(45, 18, 10, 23, 0, 44);
+    } else {
+      ctx.moveTo(0, 48);
+      ctx.bezierCurveTo(-9, 28, -28, 12, -30, -13);
+      ctx.bezierCurveTo(-31, -37, -13, -51, 0, -55);
+      ctx.bezierCurveTo(13, -51, 31, -37, 30, -13);
+      ctx.bezierCurveTo(28, 12, 9, 28, 0, 48);
+    }
     ctx.closePath();
     ctx.fill();
 
-    ctx.strokeStyle = 'rgba(255, 220, 175, 0.45)';
-    ctx.lineWidth = 1.6;
+    // A fine midrib and branching veins make the atlas read like leaves, not flat colour chips.
+    ctx.strokeStyle = 'rgba(218, 216, 174, 0.48)';
+    ctx.lineWidth = 1.25;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(0, 36);
-    ctx.lineTo(0, -44);
-    ctx.moveTo(0, 8);
-    ctx.lineTo(-36, -12);
-    ctx.moveTo(0, 8);
-    ctx.lineTo(36, -12);
+    ctx.moveTo(0, 39);
+    ctx.lineTo(0, -47);
+    for (let k = 0; k < 5; k++) {
+      const y = 22 - k * 13;
+      const reach = 10 + k * 4.3;
+      ctx.moveTo(0, y);
+      ctx.quadraticCurveTo(-reach * 0.45, y - 7, -reach, y - 13);
+      ctx.moveTo(0, y);
+      ctx.quadraticCurveTo(reach * 0.45, y - 7, reach, y - 13);
+    }
     ctx.stroke();
     ctx.restore();
   };
 
-  // 1. Quadrant 0 (top-left 0..256, 0..256): Dense Maple branchlet cluster (16 leaves)
-  const mapleColors = ['#E85820', '#D9411A', '#F27430', '#C43218'];
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2 + (rng() - 0.5) * 0.25;
-    const r = (i < 4 ? 22 : 58) + (rng() - 0.5) * 20;
-    const lx = 128 + Math.cos(a) * r;
-    const ly = 128 + Math.sin(a) * r;
-    const sc = 0.72 + rng() * 0.35;
-    drawMapleLeaf(lx, ly, sc, a + Math.PI * 0.5 + (rng() - 0.5) * 0.5, mapleColors[i % mapleColors.length]!);
+  const maplePalette = ['#496A45', '#58764A', '#6E8755', '#85945F', '#9A9B69'];
+  for (let i = 0; i < 26; i++) {
+    const angle = (i / 26) * Math.PI * 2 + (rng() - 0.5) * 0.22;
+    const radius = (i < 5 ? 18 : 53) + (rng() - 0.5) * 17;
+    drawVeinedLeaf(
+      128 + Math.cos(angle) * radius,
+      128 + Math.sin(angle) * radius,
+      0.43 + rng() * 0.22,
+      angle + Math.PI * 0.5,
+      maplePalette[i % maplePalette.length]!,
+      '#A5A477',
+      'maple',
+    );
   }
 
-  // 2. Quadrant 1 (top-right 256..512, 0..256): Dense Ginkgo fan cluster (16 fan leaves)
-  const ginkgoColors = ['#F2C632', '#E5B21E', '#F8D754', '#D69E14'];
-  const drawGinkgoLeaf = (cx: number, cy: number, scale: number, angle: number, color: string) => {
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(angle);
-    ctx.scale(scale, scale);
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(0, 38);
-    ctx.lineTo(-5, 12);
-    ctx.bezierCurveTo(-42, 8, -52, -24, -26, -46);
-    ctx.bezierCurveTo(-10, -40, -3, -32, 0, -38);
-    ctx.bezierCurveTo(3, -32, 10, -40, 26, -46);
-    ctx.bezierCurveTo(52, -24, 42, 8, 5, 12);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  };
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2 + (rng() - 0.5) * 0.25;
-    const r = (i < 4 ? 24 : 56) + (rng() - 0.5) * 18;
-    const lx = 384 + Math.cos(a) * r;
-    const ly = 128 + Math.sin(a) * r;
-    const sc = 0.78 + rng() * 0.34;
-    drawGinkgoLeaf(lx, ly, sc, a + Math.PI * 0.5 + (rng() - 0.5) * 0.4, ginkgoColors[i % ginkgoColors.length]!);
+  const ginkgoPalette = ['#7A8C58', '#8E9B65', '#A3A071', '#B0A77C'];
+  for (let i = 0; i < 27; i++) {
+    const angle = (i / 27) * Math.PI * 2 + (rng() - 0.5) * 0.24;
+    const radius = (i < 5 ? 19 : 52) + (rng() - 0.5) * 15;
+    drawVeinedLeaf(
+      384 + Math.cos(angle) * radius,
+      128 + Math.sin(angle) * radius,
+      0.42 + rng() * 0.20,
+      angle + Math.PI * 0.5,
+      ginkgoPalette[i % ginkgoPalette.length]!,
+      '#C3BA8B',
+      'fan',
+    );
   }
 
-  // 3. Quadrant 2 (bottom-left 0..256, 256..512): Wisteria blossom racemes & foliage (5 hanging clusters)
-  const wisteriaColors = ['#9B7BE0', '#B69EFF', '#D4C4FF', '#8462D2'];
-  const racemeX = [72, 100, 128, 156, 184];
-  for (let c = 0; c < racemeX.length; c++) {
-    const rx = racemeX[c]!;
-    for (let r = 0; r < 18; r++) {
-      const ry = 292 + r * 10.5;
-      const spread = Math.max(8, (1 - r / 20) * 26);
-      for (let k = -1; k <= 1; k++) {
-        ctx.fillStyle = wisteriaColors[(r + c + k + 4) % wisteriaColors.length]!;
-        ctx.beginPath();
-        const bx = rx + k * spread * 0.55 + (rng() - 0.5) * 6;
-        const by = ry + (rng() - 0.5) * 4;
-        ctx.ellipse(bx, by, 10 + rng() * 4, 8 + rng() * 3, (rng() - 0.5) * 0.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
+  // Wisteria is primarily a rich green canopy; the blossom clusters are quiet mauve accents.
+  const wisteriaPalette = ['#3F684B', '#527950', '#6D895A', '#849568'];
+  for (let i = 0; i < 24; i++) {
+    const angle = (i / 24) * Math.PI * 2 + (rng() - 0.5) * 0.28;
+    const radius = (i < 4 ? 17 : 53) + (rng() - 0.5) * 16;
+    drawVeinedLeaf(
+      128 + Math.cos(angle) * radius,
+      384 + Math.sin(angle) * radius,
+      0.40 + rng() * 0.22,
+      angle + Math.PI * 0.5,
+      wisteriaPalette[i % wisteriaPalette.length]!,
+      '#A7A47A',
+      'oval',
+    );
   }
-
-  // 4. Quadrant 3 (bottom-right 256..512, 256..512): Dense Pine / Cypress needle boughs
-  const pineColors = ['#2C5E3B', '#387349', '#234C30', '#48875A'];
-  for (let b = 0; b < 14; b++) {
-    const ba = (b / 14) * Math.PI * 2;
-    const br = b < 4 ? 22 : 56;
-    const bx = 384 + Math.cos(ba) * br;
-    const by = 384 + Math.sin(ba) * br;
-    ctx.save();
-    ctx.translate(bx, by);
-    for (let n = 0; n < 18; n++) {
-      const na = (n / 18) * Math.PI * 2 + b * 0.2;
-      const len = 34 + (n % 3) * 10;
-      ctx.fillStyle = pineColors[(b + n) % pineColors.length]!;
+  const blossomColors = ['#A88C9C', '#C0A8B3', '#D0BDBA'];
+  for (let cluster = 0; cluster < 5; cluster++) {
+    const cx = 73 + cluster * 27;
+    for (let petal = 0; petal < 12; petal++) {
+      const y = 319 + petal * 5.4;
+      const spread = 8 + petal * 0.55;
+      ctx.fillStyle = blossomColors[(cluster + petal) % blossomColors.length]!;
       ctx.beginPath();
       ctx.ellipse(
-        Math.cos(na) * len * 0.45,
-        Math.sin(na) * len * 0.45,
-        len * 0.52,
-        6.5,
-        na,
+        cx + (rng() - 0.5) * spread,
+        y + (rng() - 0.5) * 4,
+        3.5 + rng() * 2,
+        2.8 + rng() * 1.8,
+        (rng() - 0.5) * 0.8,
         0,
         Math.PI * 2,
       );
       ctx.fill();
     }
+  }
+
+  // Pine needles are slender, overlapping strokes instead of broad graphic triangles.
+  const pineGreens = ['#234A35', '#2D5A3E', '#3D6847', '#4E7650'];
+  for (let branch = 0; branch < 20; branch++) {
+    const angle = (branch / 20) * Math.PI * 2;
+    const originX = 384 + Math.cos(angle) * (branch % 4) * 8;
+    const originY = 384 + Math.sin(angle) * (branch % 4) * 8;
+    ctx.save();
+    ctx.translate(originX, originY);
+    ctx.rotate(angle);
+    for (let needle = 0; needle < 20; needle++) {
+      const t = needle / 20;
+      const length = 25 + rng() * 17;
+      ctx.strokeStyle = pineGreens[(branch + needle) % pineGreens.length]!;
+      ctx.lineWidth = 2.1 + rng() * 1.2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-3, t * 44 - 22);
+      ctx.quadraticCurveTo(-length * 0.55, t * 44 - 15, -length, t * 44 - 24);
+      ctx.moveTo(3, t * 44 - 22);
+      ctx.quadraticCurveTo(length * 0.55, t * 44 - 15, length, t * 44 - 24);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
-  // Verify non-empty alpha coverage via 32x32 readback
   const imgData = ctx.getImageData(0, 0, 512, 512).data;
   let alphaPixels = 0;
   let totalSamples = 0;
   for (let y = 8; y < 512; y += 16) {
     for (let x = 8; x < 512; x += 16) {
       totalSamples++;
-      const a = imgData[(y * 512 + x) * 4 + 3] ?? 0;
-      if (a > 100) alphaPixels++;
+      if ((imgData[(y * 512 + x) * 4 + 3] ?? 0) > 100) alphaPixels++;
     }
   }
-  const coverage = alphaPixels / Math.max(1, totalSamples);
-  if (coverage < 0.20) {
-    leafAtlasFailures++;
-  }
+  if (alphaPixels / Math.max(1, totalSamples) < 0.20) leafAtlasFailures++;
 
   cachedLeafAtlas = new THREE.CanvasTexture(canvas);
   cachedLeafAtlas.generateMipmaps = true;
+  cachedLeafAtlas.anisotropy = 4;
   cachedLeafAtlas.colorSpace = THREE.SRGBColorSpace;
   cachedLeafAtlas.needsUpdate = true;
   return cachedLeafAtlas;
@@ -438,19 +472,19 @@ export class TreeSystem extends THREE.Group {
     const templates = new Map<TreeSpecies, TreeArchTemplate>();
     templates.set(
       'maple',
-      this.buildSpeciesTemplate('maple', 6.4, 0, '#A8321E', '#E8601C', 101),
+      this.buildSpeciesTemplate('maple', 6.4, 0, '#35543A', '#75864E', 101),
     );
     templates.set(
       'ginkgo',
-      this.buildSpeciesTemplate('ginkgo', 7.4, 1, '#C99A1A', '#F0CB3C', 202),
+      this.buildSpeciesTemplate('ginkgo', 7.4, 1, '#637847', '#A2A076', 202),
     );
     templates.set(
       'wisteria',
-      this.buildSpeciesTemplate('wisteria', 5.2, 2, '#7B5CC8', '#C7B2FF', 303),
+      this.buildSpeciesTemplate('wisteria', 5.2, 2, '#3E6345', '#84966A', 303),
     );
     templates.set(
       'pine',
-      this.buildSpeciesTemplate('pine', 8.0, 3, '#24472F', '#3E7A4C', 404),
+      this.buildSpeciesTemplate('pine', 8.0, 3, '#203E2F', '#4E7652', 404),
     );
     templates.set('bamboo', this.buildBambooTemplate());
 
@@ -713,7 +747,7 @@ export class TreeSystem extends THREE.Group {
 
     // Build lush multi-clump leaf-card canopy at branch ends
     // Desktop: 11 branches * 14 cards = 154 cards per tree; Phone: 11 * 7 = 77 cards per tree
-    const cardsPerClump = this.isPhone ? 7 : 14;
+    const cardsPerClump = this.isPhone ? 12 : 22;
     const { geo: canopyGeo, cardCount } = this.createRichCanopyGeometry(
       uvSlot,
       branchEnds,
@@ -780,8 +814,8 @@ export class TreeSystem extends THREE.Group {
         const cz = clump.pos.z + Math.sin(phi) * rHoriz * clump.rz;
 
         // Card half-size 0.42..0.52m (0.84..1.04m full card width) so cards overlap into a continuous lush crown
-        const halfW = 0.42 + rng() * 0.12;
-        const halfH = 0.42 + rng() * 0.12;
+        const halfW = 0.24 + rng() * 0.07;
+        const halfH = 0.26 + rng() * 0.08;
 
         // Varied card orientation (crossed & tilted)
         const pitch = (rng() - 0.5) * 1.1;
@@ -894,16 +928,16 @@ export class TreeSystem extends THREE.Group {
     const trunkGeo = mergeGeometries(parts, false)!;
     for (const p of parts) p.dispose();
 
-    const cardsPerStalk = this.isPhone ? 11 : 18;
+    const cardsPerStalk = this.isPhone ? 14 : 22;
     const { geo: canopyGeo, cardCount } = this.createRichCanopyGeometry(
       3,
       clumpEnds,
       cardsPerStalk,
-      '#5E8C3A',
-      '#9BC05A',
+      '#3F663F',
+      '#799765',
       505,
     );
-    const crownGeo = this.createMultiBlobCrownGeometry(clumpEnds, '#5E8C3A', '#9BC05A');
+    const crownGeo = this.createMultiBlobCrownGeometry(clumpEnds, '#3F663F', '#799765');
 
     return {
       trunkGeo,
@@ -955,8 +989,8 @@ export class TreeSystem extends THREE.Group {
   }
 
   private buildFallingLeaves(): void {
-    const count = this.isPhone ? 60 : 160;
-    const geo = new THREE.PlaneGeometry(0.065, 0.05);
+    const count = this.isPhone ? 36 : 90;
+    const geo = new THREE.PlaneGeometry(0.065, 0.12, 1, 3);
 
     this.leafParticlesMat = new THREE.ShaderMaterial({
       transparent: true,
@@ -981,12 +1015,15 @@ export class TreeSystem extends THREE.Group {
         varying vec3 vColor;
         void main() {
           vec2 p = (vUv - 0.5) * 2.0;
-          // Tapered leaf silhouette with soft alpha discard (never a square or diamond shard)
-          p.x /= (1.0 - p.y * 0.32);
-          float d = length(p);
-          if (d > 0.95) discard;
-          float alpha = smoothstep(0.95, 0.45, d) * 0.88;
-          gl_FragColor = vec4(vColor, alpha);
+          float taper = pow(max(0.0, sin(vUv.y * 3.14159265)), 0.72);
+          float halfWidth = 0.48 * taper * (0.92 + 0.08 * sin(vUv.y * 37.0));
+          float edgeDistance = halfWidth - abs(p.x);
+          if (edgeDistance < 0.0) discard;
+          float alpha = smoothstep(0.0, 0.07, edgeDistance) * 0.82;
+          float midrib = 1.0 - smoothstep(0.0, 0.035, abs(p.x));
+          float sideLight = 0.94 + 0.06 * sin(vUv.y * 3.14159265);
+          vec3 leafColor = vColor * (sideLight + midrib * 0.10);
+          gl_FragColor = vec4(leafColor, alpha);
         }
       `,
     });
@@ -996,7 +1033,7 @@ export class TreeSystem extends THREE.Group {
     this.add(this.fallingLeavesMesh);
 
     const rng = createSeededRandom(88421);
-    const speciesColors = ['#E8601C', '#F0CB3C', '#B69EFF', '#D94824'];
+    const speciesColors = ['#71804C', '#9A8D5E', '#B18A67', '#566F4A'];
     const dummy = new THREE.Object3D();
 
     for (let i = 0; i < count; i++) {
@@ -1021,7 +1058,7 @@ export class TreeSystem extends THREE.Group {
         rotX: rng() * Math.PI,
         rotY: rng() * Math.PI,
         rotZ: rng() * Math.PI,
-        scale: 0.85 + rng() * 0.35,
+        scale: 0.72 + rng() * 0.28,
       });
 
       dummy.position.set(x, y, z);

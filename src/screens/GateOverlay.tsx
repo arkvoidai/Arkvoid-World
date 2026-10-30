@@ -1,6 +1,4 @@
 import { useState } from 'react';
-import { Logo } from '@/ui/Logo';
-import { Button } from '@/ui/Button';
 import { Sheet } from '@/ui/Sheet';
 import { AccountSheet } from '@/ui/AccountSheet';
 import { useAuthStore } from '@/state/auth';
@@ -9,29 +7,30 @@ export interface GateOverlayProps {
   onBegin: () => Promise<void>;
   onAccountResolved: () => void;
   isLoading?: boolean;
+  errorMessage?: string | null;
 }
 
-export function GateOverlay({ onBegin, onAccountResolved, isLoading = false }: GateOverlayProps) {
+export function GateOverlay({
+  onBegin,
+  onAccountResolved,
+  isLoading = false,
+  errorMessage,
+}: GateOverlayProps) {
   const [accountSheetOpen, setAccountSheetOpen] = useState(false);
   const [legalSheetDoc, setLegalSheetDoc] = useState<'privacy' | 'terms' | null>(null);
   const [clickPending, setClickPending] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const status = useAuthStore((s) => s.status);
+  const busy = isLoading || clickPending || status === 'loading';
 
   const handleBeginClick = async () => {
-    if (clickPending || isLoading) return;
+    if (busy) return;
     setClickPending(true);
     setLocalError(null);
     try {
       await onBegin();
-    } catch {
-      setLocalError('Unable to begin. Retrying...');
-      useAuthStore.getState().resetGuestState();
-      try {
-        await onBegin();
-      } catch {
-        setLocalError('Something went quiet. Try again.');
-      }
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : 'The gate did not open. Please try again.');
     } finally {
       setClickPending(false);
     }
@@ -39,95 +38,79 @@ export function GateOverlay({ onBegin, onAccountResolved, isLoading = false }: G
 
   return (
     <aside
-      aria-label="Welcome Gate"
-      className="pointer-events-none fixed inset-0 z-hud flex flex-col justify-between overflow-y-auto overscroll-contain px-4 pt-[calc(env(safe-area-inset-top)+1rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)] select-none sm:px-6"
+      aria-label="Enter Arkvoid"
+      className="pointer-events-none fixed inset-0 z-hud overflow-y-auto overscroll-contain select-none"
     >
-      {/* Top tiny mono label */}
-      <div className="flex items-center justify-between">
-        <span
-          data-testid="gate-early-preview-badge"
-          className="rounded-pill border border-white/70 bg-[#fbfaf7]/90 px-3 py-1.5 font-mono text-[10px] tracking-[0.18em] text-ink-3 shadow-sm backdrop-blur-xl"
-        >
-          EARLY PREVIEW
-        </span>
-      </div>
+      <div
+        aria-hidden="true"
+        className="absolute inset-0"
+        style={{
+          background:
+            'linear-gradient(90deg, rgba(13,20,19,0.68) 0%, rgba(13,20,19,0.34) 36%, rgba(13,20,19,0.02) 78%), linear-gradient(0deg, rgba(10,16,16,0.70) 0%, rgba(10,16,16,0.16) 39%, transparent 72%)',
+        }}
+      />
 
-      {/* Main Gate Card: Bottom centered on phones, left-center on desktop */}
-      <div className="pointer-events-auto my-auto mx-auto flex w-full max-w-[26rem] flex-col">
-        <div
-          data-testid="gate-main-card"
-          className="flex flex-col gap-4 rounded-[26px] border border-white/70 bg-[#fbfaf7]/95 p-5 shadow-[0_24px_80px_rgba(18,12,22,0.28)] backdrop-blur-2xl sm:gap-5 sm:p-7"
-        >
-          {/* Logo Lockup */}
-          <div className="flex items-center">
-            <Logo size={38} variant="lockup" />
-          </div>
-
-          {/* World Name in Instrument Serif italic */}
-          <div className="flex flex-col gap-1">
-            <h1
-              className="font-serif italic text-3xl font-normal leading-tight text-ink md:text-4xl"
-              style={{ fontFamily: "'Instrument Serif', serif" }}
-            >
-              Celestial Frontier
-            </h1>
-            <p className="mt-1 text-xs leading-relaxed text-ink-3 sm:text-sm">
-              A living world that remembers you.
-            </p>
-          </div>
-
-          {/* Primary Action Button: "Begin" */}
-          <div className="flex flex-col gap-2 pt-1">
-            <Button
-              data-testid="gate-begin-btn"
-              variant="light"
-              size="md"
-              loading={isLoading || clickPending || status === 'loading'}
-              onClick={handleBeginClick}
-              className="w-full text-sm font-semibold tracking-wide shadow-sm hover:shadow"
-              style={{
-                backgroundImage: 'linear-gradient(110deg, #f5b777 0%, #efa878 58%, #e4aaa0 100%)',
-                boxShadow: '0 12px 28px rgba(180, 104, 78, 0.20)',
-              }}
-            >
-              Enter Arkvoid
-            </Button>
-
-            {localError && (
-              <p className="text-center text-xs text-orange">{localError}</p>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setAccountSheetOpen(true)}
-              className="py-2 text-center text-xs text-ink-3 hover:text-ink transition-colors"
-            >
-              I already have an account
-            </button>
-          </div>
+      <header className="pointer-events-none absolute left-5 right-5 top-[calc(env(safe-area-inset-top)+1.25rem)] flex items-center justify-between sm:left-9 sm:right-9 sm:top-8">
+        <div className="flex items-center gap-3 text-white">
+          <span className="font-sans text-[13px] font-medium tracking-[0.34em]">ARKVOID</span>
+          <span className="h-3 w-px bg-white/35" />
+          <span className="font-mono text-[9px] tracking-[0.2em] text-white/65">WORLD 01</span>
         </div>
-      </div>
+        <span className="rounded-full border border-white/25 bg-black/10 px-3 py-1.5 font-mono text-[9px] tracking-[0.17em] text-white/75 backdrop-blur-md">
+          HOME REACH
+        </span>
+      </header>
 
-      {/* Footer tiny links for Privacy and Terms */}
-      <footer className="pointer-events-auto flex items-center justify-center gap-4 py-2 text-[11px] text-ink-3">
-        <button
-          type="button"
-          onClick={() => setLegalSheetDoc('privacy')}
-          className="hover:text-ink transition-colors"
+      <main className="pointer-events-auto absolute bottom-[calc(env(safe-area-inset-bottom)+3.8rem)] left-5 right-5 flex max-w-[38rem] flex-col items-start sm:bottom-14 sm:left-9 lg:bottom-[11vh] lg:left-[8vw]">
+        <p className="mb-4 font-mono text-[9px] tracking-[0.24em] text-[#E8C9A4] sm:text-[10px]">
+          BEYOND THE VEIL
+        </p>
+        <h1
+          className="max-w-[34rem] text-[2.45rem] font-normal leading-[0.94] tracking-[-0.035em] text-[#F8F5EE] sm:text-6xl lg:text-[5.25rem]"
+          style={{ fontFamily: "'Instrument Serif', Georgia, serif" }}
         >
-          Privacy
-        </button>
-        <span className="opacity-40">·</span>
-        <button
-          type="button"
-          onClick={() => setLegalSheetDoc('terms')}
-          className="hover:text-ink transition-colors"
-        >
-          Terms
-        </button>
+          A world you can
+          <br />
+          step inside.
+        </h1>
+        <p className="mt-5 max-w-[25rem] text-[13px] leading-[1.75] text-white/78 sm:text-[14px]">
+          Walk the quiet islands. Find the old paths. Let the world unfold at your pace.
+        </p>
+
+        <div className="mt-7 flex w-full flex-col items-start gap-3 sm:w-auto sm:flex-row sm:items-center">
+          <button
+            type="button"
+            data-testid="gate-begin-btn"
+            onClick={handleBeginClick}
+            disabled={busy}
+            aria-busy={busy}
+            className="group flex min-h-[52px] w-full items-center justify-between gap-9 rounded-full bg-[#F5F0E7] px-6 text-[13px] font-semibold tracking-[0.02em] text-[#1D2521] shadow-[0_12px_38px_rgba(0,0,0,0.22)] transition-[transform,background-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_16px_44px_rgba(0,0,0,0.28)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#E8C9A4] disabled:cursor-wait disabled:opacity-75 sm:w-[224px]"
+          >
+            <span>{busy ? 'Opening the gate…' : 'Begin your journey'}</span>
+            <span className="text-lg transition-transform duration-200 group-hover:translate-x-1" aria-hidden="true">↗</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setAccountSheetOpen(true)}
+            className="min-h-11 px-1 text-left text-[12px] text-white/75 underline decoration-white/25 underline-offset-4 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:px-3"
+          >
+            I have an account
+          </button>
+        </div>
+
+        {(localError || errorMessage) && (
+          <p role="alert" className="mt-3 max-w-md text-[12px] text-[#FFD0B8]">
+            {errorMessage || localError}
+          </p>
+        )}
+      </main>
+
+      <footer className="pointer-events-auto absolute bottom-[calc(env(safe-area-inset-bottom)+0.65rem)] right-5 flex items-center gap-4 text-[10px] text-white/55 sm:bottom-8 sm:right-9">
+        <button type="button" onClick={() => setLegalSheetDoc('privacy')} className="transition-colors hover:text-white">Privacy</button>
+        <span aria-hidden="true" className="text-white/30">·</span>
+        <button type="button" onClick={() => setLegalSheetDoc('terms')} className="transition-colors hover:text-white">Terms</button>
       </footer>
 
-      {/* Account Sheet for "I have an account" */}
       <AccountSheet
         open={accountSheetOpen}
         onClose={() => {
@@ -136,7 +119,6 @@ export function GateOverlay({ onBegin, onAccountResolved, isLoading = false }: G
         }}
       />
 
-      {/* Simple Legal Sheet for Privacy & Terms (Step 30 placeholder) */}
       <Sheet
         open={legalSheetDoc !== null}
         onClose={() => setLegalSheetDoc(null)}

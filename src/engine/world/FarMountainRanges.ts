@@ -129,11 +129,13 @@ export class FarMountainRanges extends THREE.Group {
     super();
     const segments = isPhone ? 128 : 256;
     const rows = isPhone ? 5 : 8;
+    // The first ridgelines sit beyond the Cloud Ocean, close enough to frame the
+    // starting island instead of disappearing as a tiny horizon at several kilometres.
     const specs: RangeSpec[] = [
-      { radius: 7800, thickness: 900, baseHeight: 340, peakHeight: 1050, seed: 31, segments, rows },
-      { radius: 14000, thickness: 1350, baseHeight: 550, peakHeight: 1700, seed: 73, segments, rows },
-      { radius: 24000, thickness: 1900, baseHeight: 760, peakHeight: 2350, seed: 127, segments, rows },
-      { radius: 38000, thickness: 2300, baseHeight: 900, peakHeight: 2800, seed: 181, segments, rows },
+      { radius: 1250, thickness: 520, baseHeight: 90, peakHeight: 520, seed: 31, segments, rows },
+      { radius: 2250, thickness: 760, baseHeight: 160, peakHeight: 880, seed: 73, segments, rows },
+      { radius: 3900, thickness: 1120, baseHeight: 290, peakHeight: 1350, seed: 127, segments, rows },
+      { radius: 6400, thickness: 1680, baseHeight: 480, peakHeight: 2050, seed: 181, segments, rows },
     ];
 
     for (const spec of specs) {
@@ -153,10 +155,10 @@ export class FarMountainRanges extends THREE.Group {
 
     this.waterfallMaterial = createDistantFallMaterial();
     const falls = [
-      { x: 3500, z: -2800, top: 1220, height: 310, width: 18, yaw: 0.4 },
-      { x: 7900, z: 2100, top: 1840, height: 460, width: 26, yaw: -0.8 },
-      { x: -7200, z: 5800, top: 1510, height: 380, width: 22, yaw: 1.25 },
-      { x: 13800, z: -7600, top: 2400, height: 560, width: 32, yaw: 0.65 },
+      { x: 1480, z: -1120, top: 460, height: 210, width: 16, yaw: 0.4 },
+      { x: -2600, z: 1850, top: 880, height: 330, width: 22, yaw: -0.8 },
+      { x: 4200, z: 2550, top: 1240, height: 420, width: 26, yaw: 1.25 },
+      { x: -5600, z: -4200, top: 1850, height: 520, width: 30, yaw: 0.65 },
     ];
     for (let i = 0; i < falls.length; i++) {
       const fall = falls[i]!;

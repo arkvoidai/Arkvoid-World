@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
   WandererMaterials,
   type LeaningId,
@@ -77,6 +78,9 @@ export class Wanderer extends THREE.Group {
   private staffMesh?: THREE.Mesh;
   private mantleMesh?: THREE.Mesh;
   private maskMesh?: THREE.Mesh;
+  private cloakMesh?: THREE.Mesh;
+  private collarMesh?: THREE.Mesh;
+  private hairPinMesh?: THREE.Mesh;
   private hairMesh?: THREE.Mesh;
 
   // Spring Chains
@@ -256,10 +260,7 @@ export class Wanderer extends THREE.Group {
     rightShin.add(rightFoot);
 
     // Add smooth body volumes (head sphere, torso cylinder, hands)
-    const skinMat = new THREE.MeshStandardMaterial({
-      color: '#E0D6C8',
-      roughness: 0.8,
-    });
+    const skinMat = this.materials.getSkinMaterial();
 
     const headGeo = new THREE.SphereGeometry(0.11, 16, 12);
     headGeo.scale(0.85, 1.1, 0.95);
@@ -514,71 +515,191 @@ export class Wanderer extends THREE.Group {
    * Head, glowing eye marks, and form-specific attachments.
    */
   private buildHeadAndAccessories(): void {
-    // Eye Marks: 2 glowing marks on veil/mask (emissive, additive, >= 2px screen size)
     this.eyeGroup = new THREE.Group();
-    this.eyeGroup.name = 'eye_marks';
+    this.eyeGroup.name = 'face_and_hair';
 
-    const eyeMat = this.materials.getEyeMaterial(this.leaning);
-    const eyeGeo = new THREE.PlaneGeometry(0.024, 0.012);
+    const addVertexColour = (geometry: THREE.BufferGeometry, hex: string): THREE.BufferGeometry => {
+      const position = geometry.getAttribute('position');
+      const color = new THREE.Color(hex);
+      const values = new Float32Array(position.count * 3);
+      for (let i = 0; i < position.count; i++) {
+        values[i * 3] = color.r;
+        values[i * 3 + 1] = color.g;
+        values[i * 3 + 2] = color.b;
+      }
+      geometry.setAttribute('color', new THREE.BufferAttribute(values, 3));
+      geometry.computeVertexNormals();
+      return geometry;
+    };
 
-    this.leftEyeMesh = new THREE.Mesh(eyeGeo, eyeMat);
-    this.leftEyeMesh.position.set(0.038, 0.05, 0.11);
-    this.eyeGroup.add(this.leftEyeMesh);
+    const eyeParts: THREE.BufferGeometry[] = [];
+    const featureParts: THREE.BufferGeometry[] = [];
+    const hairParts: THREE.BufferGeometry[] = [];
 
-    this.rightEyeMesh = new THREE.Mesh(eyeGeo, eyeMat);
-    this.rightEyeMesh.position.set(-0.038, 0.05, 0.11);
-    this.eyeGroup.add(this.rightEyeMesh);
+    const addEllipsoid = (
+      parts: THREE.BufferGeometry[],
+      x: number, y: number, z: number,
+      radius: number, sx: number, sy: number, sz: number,
+      color: string,
+    ): void => {
+      const geometry = new THREE.SphereGeometry(radius, 16, 12);
+      geometry.scale(sx, sy, sz);
+      geometry.translate(x, y, z);
+      parts.push(addVertexColour(geometry, color));
+    };
+
+    const addTube = (
+      parts: THREE.BufferGeometry[],
+      points: THREE.Vector3[],
+      radius: number,
+      color: string,
+      tubularSegments = 10,
+    ): void => {
+      const curve = new THREE.CatmullRomCurve3(points);
+      const geometry = new THREE.TubeGeometry(curve, tubularSegments, radius, 7, false);
+      parts.push(addVertexColour(geometry, color));
+    };
+
+    // Two readable eyes: warm ivory sclera, amber-brown irises, dark pupils and catchlights.
+    for (const side of [-1, 1]) {
+      const eyeX = side * 0.038;
+      addEllipsoid(eyeParts, eyeX, 0.045, 0.092, 0.017, 1.12, 0.78, 0.58, '#F4EEE4');
+      addEllipsoid(eyeParts, eyeX + 0.0015, 0.045, 0.102, 0.0092, 0.88, 0.9, 0.55, '#82583C');
+      addEllipsoid(eyeParts, eyeX + 0.0015, 0.045, 0.107, 0.0047, 0.82, 0.9, 0.5, '#241A16');
+      addEllipsoid(eyeParts, eyeX - 0.0018, 0.049, 0.109, 0.0019, 1, 1, 0.65, '#FFFFFF');
+      addTube(
+        eyeParts,
+        [
+          new THREE.Vector3(eyeX - 0.021, 0.071, 0.091),
+          new THREE.Vector3(eyeX, 0.078, 0.101),
+          new THREE.Vector3(eyeX + 0.021, 0.071, 0.091),
+        ],
+        0.0032,
+        '#382820',
+        8,
+      );
+    }
+
+    const eyeGeometry = mergeGeometries(eyeParts, false);
+    for (const geometry of eyeParts) geometry.dispose();
+    if (!eyeGeometry) throw new Error('Unable to build wanderer eye geometry');
+    eyeGeometry.computeBoundingSphere();
+    const eyeMesh = new THREE.Mesh(eyeGeometry, this.materials.getFaceDetailMaterial());
+    eyeMesh.name = 'face_eyes';
+    this.eyeGroup.add(eyeMesh);
+    // Both blink references share one merged eye mesh, so the paired blink remains synchronised.
+    this.leftEyeMesh = eyeMesh;
+    this.rightEyeMesh = eyeMesh;
+
+    // Nose, a soft smile, cheek warmth and ears. Kept in a separate mesh so eye blinks
+    // never squash the rest of the face.
+    addEllipsoid(featureParts, 0, 0.008, 0.096, 0.010, 0.66, 0.88, 0.92, '#C78C76');
+    addEllipsoid(featureParts, -0.005, 0.001, 0.105, 0.0022, 1, 0.75, 0.7, '#895B50');
+    addEllipsoid(featureParts, 0.005, 0.001, 0.105, 0.0022, 1, 0.75, 0.7, '#895B50');
+    addEllipsoid(featureParts, -0.061, 0.006, 0.077, 0.010, 1.1, 0.62, 0.42, '#C8887C');
+    addEllipsoid(featureParts, 0.061, 0.006, 0.077, 0.010, 1.1, 0.62, 0.42, '#C8887C');
+    addEllipsoid(featureParts, -0.096, 0.004, 0.002, 0.017, 0.48, 0.92, 0.56, '#C98F79');
+    addEllipsoid(featureParts, 0.096, 0.004, 0.002, 0.017, 0.48, 0.92, 0.56, '#C98F79');
+    addTube(
+      featureParts,
+      [
+        new THREE.Vector3(-0.018, -0.031, 0.096),
+        new THREE.Vector3(0, -0.036, 0.102),
+        new THREE.Vector3(0.018, -0.031, 0.096),
+      ],
+      0.0027,
+      '#794A43',
+      8,
+    );
+
+    const featureGeometry = mergeGeometries(featureParts, false);
+    for (const geometry of featureParts) geometry.dispose();
+    if (!featureGeometry) throw new Error('Unable to build wanderer face geometry');
+    featureGeometry.computeBoundingSphere();
+    const featureMesh = new THREE.Mesh(featureGeometry, this.materials.getFaceDetailMaterial());
+    featureMesh.name = 'face_features';
+    this.eyeGroup.add(featureMesh);
+
+    // Scalp cap and tapered locks frame the face without hiding it behind a veil.
+    const hairCap = new THREE.SphereGeometry(0.115, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.46);
+    hairCap.scale(1, 0.98, 0.96);
+    hairCap.translate(0, 0.066, -0.006);
+    hairParts.push(addVertexColour(hairCap, '#30231F'));
+    addTube(
+      hairParts,
+      [
+        new THREE.Vector3(-0.068, 0.076, 0.062),
+        new THREE.Vector3(-0.048, 0.061, 0.092),
+        new THREE.Vector3(-0.016, 0.058, 0.103),
+        new THREE.Vector3(0.012, 0.067, 0.098),
+      ],
+      0.008,
+      '#30231F',
+      12,
+    );
+    addTube(
+      hairParts,
+      [
+        new THREE.Vector3(0.072, 0.052, 0.056),
+        new THREE.Vector3(0.078, 0.005, 0.072),
+        new THREE.Vector3(0.073, -0.045, 0.060),
+      ],
+      0.009,
+      '#30231F',
+      10,
+    );
+    addTube(
+      hairParts,
+      [
+        new THREE.Vector3(-0.072, 0.052, 0.056),
+        new THREE.Vector3(-0.078, 0.005, 0.072),
+        new THREE.Vector3(-0.073, -0.045, 0.060),
+      ],
+      0.009,
+      '#30231F',
+      10,
+    );
+    const hairGeometry = mergeGeometries(hairParts, false);
+    for (const geometry of hairParts) geometry.dispose();
+    if (!hairGeometry) throw new Error('Unable to build wanderer hair geometry');
+    hairGeometry.computeVertexNormals();
+    const hairMesh = new THREE.Mesh(hairGeometry, this.materials.getHairMaterial());
+    hairMesh.name = 'wanderer_hair';
+    hairMesh.castShadow = true;
+    this.eyeGroup.add(hairMesh);
+    this.hairMesh = hairMesh;
 
     this.skeleton.head.add(this.eyeGroup);
 
-    // Form Specific Accessories
+    // Form-specific silhouette details remain distinct, but faces stay visible.
     switch (this.form) {
       case 0: {
-        // Form 0: Traveller - wide bamboo hat with soft gauze veil hanging to shoulders, short cloak
         const bambooMat = this.materials.getBambooMaterial();
-        const gauzeMat = this.materials.getGauzeMaterial();
-
-        // Conical bamboo hat
         const hatGeo = new THREE.ConeGeometry(0.44, 0.15, 24, 1, true);
         this.hatMesh = new THREE.Mesh(hatGeo, bambooMat);
         this.hatMesh.position.y = 0.14;
+        this.hatMesh.castShadow = true;
         this.skeleton.head.add(this.hatMesh);
-
-        // Gauze veil hanging from hat rim
-        const veilGeo = new THREE.CylinderGeometry(0.42, 0.45, 0.34, 20, 1, true);
-        this.veilMesh = new THREE.Mesh(veilGeo, gauzeMat);
-        this.veilMesh.position.y = -0.10;
-        this.hatMesh.add(this.veilMesh);
-
-        // Short cloak over shoulders
+        // No full-face gauze curtain: the Traveller's expression remains visible.
         const cloakGeo = new THREE.ConeGeometry(0.34, 0.45, 16, 1, true);
-        const cloakMat = this.materials.getFabricMaterial(this.leaning, true);
-        const cloakMesh = new THREE.Mesh(cloakGeo, cloakMat);
+        const cloakMesh = new THREE.Mesh(cloakGeo, this.materials.getFabricMaterial(this.leaning, true));
         cloakMesh.position.y = -0.06;
         cloakMesh.scale.set(1.0, 1.0, 0.7);
+        this.cloakMesh = cloakMesh;
         this.skeleton.chest.add(cloakMesh);
         break;
       }
 
       case 1: {
-        // Form 1: Scholar - deep hood with face veil, longer layered robe, satchel at hip
         const fabricMat = this.materials.getFabricMaterial(this.leaning, false);
-        const gauzeMat = this.materials.getGauzeMaterial();
-
-        // Deep hood
-        const hoodGeo = new THREE.SphereGeometry(0.18, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.7);
+        const hoodGeo = new THREE.SphereGeometry(0.18, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.70);
         const hoodMesh = new THREE.Mesh(hoodGeo, fabricMat);
-        hoodMesh.position.set(0, 0.06, -0.02);
-        hoodMesh.scale.set(0.9, 1.1, 1.1);
+        hoodMesh.position.set(0, 0.055, -0.095);
+        hoodMesh.scale.set(0.94, 1.08, 1.04);
+        hoodMesh.castShadow = true;
+        this.hatMesh = hoodMesh;
         this.skeleton.head.add(hoodMesh);
 
-        // Face veil
-        const faceVeilGeo = new THREE.PlaneGeometry(0.18, 0.22);
-        this.veilMesh = new THREE.Mesh(faceVeilGeo, gauzeMat);
-        this.veilMesh.position.set(0, -0.02, 0.115);
-        this.skeleton.head.add(this.veilMesh);
-
-        // Leather satchel at right hip
         const satchelMat = new THREE.MeshStandardMaterial({ color: '#4A3425', roughness: 0.7 });
         this.satchelMesh = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.06), satchelMat);
         this.satchelMesh.position.set(-0.22, 0.82, 0.05);
@@ -587,58 +708,48 @@ export class Wanderer extends THREE.Group {
       }
 
       case 2: {
-        // Form 2: Warden - taller 1.80m, shoulder mantle, topknot with hairpin, plain half-mask
         const trimMat = this.materials.getFabricMaterial(this.leaning, true);
-
-        // Shoulder mantle
         const mantleGeo = new THREE.CylinderGeometry(0.24, 0.36, 0.25, 16, 1, true);
         this.mantleMesh = new THREE.Mesh(mantleGeo, trimMat);
         this.mantleMesh.position.y = 0.08;
         this.mantleMesh.scale.set(1.2, 1.0, 0.85);
         this.skeleton.chest.add(this.mantleMesh);
 
-        // Topknot and hair pin
-        const hairMat = new THREE.MeshStandardMaterial({ color: '#1B1822', roughness: 0.9 });
-        const topknot = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), hairMat);
-        topknot.position.set(0, 0.16, -0.04);
-        this.skeleton.head.add(topknot);
-
-        // Half mask
         const maskMat = new THREE.MeshStandardMaterial({ color: '#D9D3C7', roughness: 0.6 });
-        this.maskMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.10, 0.08, 12, 1, true, -Math.PI / 3, (Math.PI * 2) / 3), maskMat);
-        this.maskMesh.position.set(0, 0.02, 0.02);
+        this.maskMesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.10, 0.10, 0.07, 12, 1, true, -Math.PI / 3, (Math.PI * 2) / 3),
+          maskMat,
+        );
+        this.maskMesh.position.set(0, -0.055, 0.045);
         this.skeleton.head.add(this.maskMesh);
         break;
       }
 
       case 3: {
-        // Form 3: Sage - shorter 1.62m, high collar, hair bun with ornaments, hooded wrap
         const trimMat = this.materials.getFabricMaterial(this.leaning, true);
-
-        // High collar
-        const collarGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.12, 16, 1, true);
-        const collar = new THREE.Mesh(collarGeo, trimMat);
+        const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.12, 16, 1, true), trimMat);
         collar.position.y = 0.08;
+        this.collarMesh = collar;
         this.skeleton.neck.add(collar);
 
-        // Hair bun with gold pin
-        const hairMat = new THREE.MeshStandardMaterial({ color: '#24202B', roughness: 0.9 });
-        const bun = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 10), hairMat);
-        bun.position.set(0, 0.12, -0.08);
+        const bun = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 10), this.materials.getHairMaterial());
+        bun.position.set(0, 0.14, -0.08);
+        this.hairMesh = bun;
         this.skeleton.head.add(bun);
 
-        const goldMat = new THREE.MeshStandardMaterial({ color: '#D8A24A', roughness: 0.3, metalness: 0.8 });
-        const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.22), goldMat);
+        const pin = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.005, 0.005, 0.22, 8),
+          new THREE.MeshStandardMaterial({ color: '#D8A24A', roughness: 0.34, metalness: 0.55 }),
+        );
         pin.rotation.z = Math.PI / 3;
-        pin.position.set(0, 0.12, -0.08);
+        pin.position.set(0, 0.14, -0.08);
+        this.hairPinMesh = pin;
         this.skeleton.head.add(pin);
         break;
       }
     }
 
-    // Resident specific additions
     if (this.resident === 'hale') {
-      // Long white beard geometry & wooden staff
       const beardMat = new THREE.MeshStandardMaterial({ color: '#EAE6DF', roughness: 0.85 });
       const beardGeo = new THREE.ConeGeometry(0.06, 0.35, 8);
       beardGeo.rotateX(Math.PI);
@@ -646,32 +757,27 @@ export class Wanderer extends THREE.Group {
       beard.position.set(0, -0.08, 0.08);
       this.skeleton.head.add(beard);
 
-      // Wooden staff
       const woodMat = new THREE.MeshStandardMaterial({ color: '#5C4431', roughness: 0.8 });
       const staffGeo = new THREE.CylinderGeometry(0.02, 0.02, 1.85, 8);
       this.staffMesh = new THREE.Mesh(staffGeo, woodMat);
       this.staffMesh.position.set(0.32, 0.70, 0.12);
       this.skeleton.root.add(this.staffMesh);
     } else if (this.resident === 'ione') {
-      // Round glasses frames & scroll case
       const scrollMat = new THREE.MeshStandardMaterial({ color: '#7A5B3D', roughness: 0.7 });
       const scrollCase = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.38, 8), scrollMat);
       scrollCase.rotation.z = Math.PI / 4;
       scrollCase.position.set(-0.25, 0.75, -0.08);
       this.skeleton.root.add(scrollCase);
     } else if (this.resident === 'tamsin') {
-      // Lantern pole
       const poleMat = new THREE.MeshStandardMaterial({ color: '#443B33', roughness: 0.8 });
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 1.95, 8), poleMat);
       pole.position.set(0.34, 0.75, 0.15);
-
       const lanternMat = new THREE.MeshBasicMaterial({ color: '#FFA040' });
       const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), lanternMat);
       lantern.position.y = 0.95;
       pole.add(lantern);
       this.skeleton.root.add(pole);
     } else if (this.resident === 'corvin') {
-      // Wooden practice sword in scabbard
       const swordMat = new THREE.MeshStandardMaterial({ color: '#8A7056', roughness: 0.7 });
       const sword = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.75, 0.02), swordMat);
       sword.rotation.z = -Math.PI / 5;
@@ -828,13 +934,39 @@ export class Wanderer extends THREE.Group {
     this.buildSash();
 
     // Rebuild head accessories
-    if (this.hatMesh) { this.hatMesh.removeFromParent(); this.hatMesh = undefined; }
-    if (this.veilMesh) { this.veilMesh.removeFromParent(); this.veilMesh = undefined; }
-    if (this.satchelMesh) { this.satchelMesh.removeFromParent(); this.satchelMesh = undefined; }
-    if (this.mantleMesh) { this.mantleMesh.removeFromParent(); this.mantleMesh = undefined; }
-    if (this.maskMesh) { this.maskMesh.removeFromParent(); this.maskMesh = undefined; }
-    if (this.hairMesh) { this.hairMesh.removeFromParent(); this.hairMesh = undefined; }
-    if (this.eyeGroup) this.eyeGroup.removeFromParent();
+    const removeAccessory = (mesh?: THREE.Mesh): void => {
+      if (!mesh) return;
+      mesh.geometry.dispose();
+      mesh.removeFromParent();
+    };
+    removeAccessory(this.hatMesh);
+    removeAccessory(this.veilMesh);
+    removeAccessory(this.satchelMesh);
+    removeAccessory(this.mantleMesh);
+    removeAccessory(this.maskMesh);
+    removeAccessory(this.cloakMesh);
+    removeAccessory(this.collarMesh);
+    removeAccessory(this.hairPinMesh);
+    this.hatMesh = undefined;
+    this.veilMesh = undefined;
+    this.satchelMesh = undefined;
+    this.mantleMesh = undefined;
+    this.maskMesh = undefined;
+    this.cloakMesh = undefined;
+    this.collarMesh = undefined;
+    this.hairPinMesh = undefined;
+
+    if (this.hairMesh && this.hairMesh.parent !== this.eyeGroup) {
+      this.hairMesh.geometry.dispose();
+      this.hairMesh.removeFromParent();
+    }
+    this.hairMesh = undefined;
+    if (this.eyeGroup) {
+      this.eyeGroup.traverse((object) => {
+        if ((object as THREE.Mesh).isMesh) (object as THREE.Mesh).geometry.dispose();
+      });
+      this.eyeGroup.removeFromParent();
+    }
     this.buildHeadAndAccessories();
   }
 
@@ -846,9 +978,27 @@ export class Wanderer extends THREE.Group {
 
   // Three.js r186 Object3D/Group has dispose()
   override dispose(): void {
-    this.robeGeometry.dispose();
-    if (this.robeMaterial instanceof THREE.Material) {
-      this.robeMaterial.dispose();
+    if (this.eyeGroup) {
+      this.eyeGroup.traverse((object) => {
+        if ((object as THREE.Mesh).isMesh) (object as THREE.Mesh).geometry.dispose();
+      });
+      this.eyeGroup.removeFromParent();
     }
+    for (const mesh of [
+      this.hatMesh, this.veilMesh, this.satchelMesh, this.staffMesh,
+      this.mantleMesh, this.maskMesh, this.cloakMesh, this.collarMesh, this.hairPinMesh,
+    ]) {
+      if (mesh) {
+        mesh.geometry.dispose();
+        mesh.removeFromParent();
+      }
+    }
+    if (this.hairMesh && this.hairMesh.parent !== this.eyeGroup) {
+      this.hairMesh.geometry.dispose();
+      this.hairMesh.removeFromParent();
+    }
+    this.robeGeometry.dispose();
+    // Fabric materials are shared and owned by WandererMaterials' cache.
+    // Disposing one wanderer must not invalidate materials on every other actor.
   }
 }

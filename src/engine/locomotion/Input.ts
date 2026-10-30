@@ -158,11 +158,11 @@ export class InputManager {
     });
 
     const moveLabel = document.createElement('div');
-    moveLabel.textContent = 'MOVE  ·  HOLD & DRAG';
+    moveLabel.textContent = 'MOVE';
     Object.assign(moveLabel.style, {
       position: 'fixed',
       left: 'calc(env(safe-area-inset-left, 0px) + 28px)',
-      bottom: 'calc(env(safe-area-inset-bottom, 0px) + 132px)',
+      bottom: 'calc(env(safe-area-inset-bottom, 0px) + 148px)',
       color: 'rgba(28, 27, 25, 0.68)',
       fontSize: '9px',
       fontWeight: '600',
@@ -172,7 +172,7 @@ export class InputManager {
     });
 
     const lookLabel = document.createElement('div');
-    lookLabel.textContent = 'DRAG TO LOOK';
+    lookLabel.textContent = 'LOOK';
     Object.assign(lookLabel.style, {
       position: 'fixed',
       right: 'calc(env(safe-area-inset-right, 0px) + 22px)',
@@ -191,15 +191,15 @@ export class InputManager {
       position: 'fixed',
       left: 'calc(env(safe-area-inset-left, 0px) + 18px)',
       bottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)',
-      width: '104px',
-      height: '104px',
+      width: '120px',
+      height: '120px',
       borderRadius: '50%',
       border: '1px solid rgba(36, 34, 31, 0.18)',
       background: 'rgba(250, 249, 246, 0.42)',
       backdropFilter: 'blur(12px)',
       WebkitBackdropFilter: 'blur(12px)',
       boxShadow: '0 8px 28px rgba(28, 25, 22, 0.10), inset 0 1px 0 rgba(255,255,255,0.65)',
-      opacity: '0.72',
+      opacity: '0.84',
       transition: 'opacity 140ms ease',
       pointerEvents: 'none',
       boxSizing: 'border-box',
@@ -208,14 +208,14 @@ export class InputManager {
     const knob = document.createElement('div');
     Object.assign(knob.style, {
       position: 'absolute',
-      width: '42px',
-      height: '42px',
-      left: '30px',
-      top: '30px',
+      width: '48px',
+      height: '48px',
+      left: '36px',
+      top: '36px',
       borderRadius: '50%',
       border: '1px solid rgba(36, 34, 31, 0.20)',
-      background: 'rgba(255, 255, 255, 0.88)',
-      boxShadow: '0 2px 10px rgba(28, 25, 22, 0.14), inset 0 1px 0 rgba(255,255,255,0.95)',
+      background: 'rgba(249, 247, 240, 0.96)',
+      boxShadow: '0 3px 14px rgba(28, 25, 22, 0.16), inset 0 1px 0 rgba(255,255,255,0.98)',
       transform: 'translate3d(0, 0, 0)',
       willChange: 'transform',
       pointerEvents: 'none',
@@ -229,10 +229,10 @@ export class InputManager {
     runButton.setAttribute('aria-pressed', 'false');
     Object.assign(runButton.style, {
       position: 'fixed',
-      right: 'calc(env(safe-area-inset-right, 0px) + 22px)',
-      bottom: 'calc(env(safe-area-inset-bottom, 0px) + 48px)',
-      width: '68px',
-      height: '40px',
+      right: 'calc(env(safe-area-inset-right, 0px) + 24px)',
+      bottom: 'calc(env(safe-area-inset-bottom, 0px) + 54px)',
+      width: '76px',
+      height: '44px',
       borderRadius: '999px',
       border: '1px solid rgba(36, 34, 31, 0.18)',
       background: 'rgba(250, 249, 246, 0.90)',

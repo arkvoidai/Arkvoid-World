@@ -36,6 +36,7 @@ import { GuideWisp } from '@/hud/GuideWisp';
 import { useAuthStore } from '@/state/auth';
 import { useGameStore } from '@/state/game';
 import { bootstrapSession } from '@/app/bootstrap';
+import { resolvePostBootstrapMode, shouldCreateGuestSession } from '@/app/entryFlow';
 import type { Leaning } from '@/net/api';
 
 const VisualReviewOverlay =
@@ -140,8 +141,10 @@ export default function WorldHost({
           setViewMode('gate');
           sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'gate' });
         } else {
-          if (outcome.hasCharacter) {
-            // Returning user: 5s arrival rail, then world
+          // Existing guests without a character return to the visible world gate.
+          // Only a saved character bypasses the gate and plays the arrival rail.
+          const destination = resolvePostBootstrapMode(outcome);
+          if (destination === 'arrival') {
             setViewMode('arrival');
             sharedEngineBridge.enqueue({
               type: 'playArrivalRail',
@@ -151,9 +154,8 @@ export default function WorldHost({
               },
             });
           } else {
-            // Session without character: awakening
-            setViewMode('awakening');
-            sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
+            setViewMode('gate');
+            sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'gate' });
           }
         }
         setSessionReady(true);
@@ -186,30 +188,42 @@ export default function WorldHost({
 
   const handleBegin = useCallback(async () => {
     setIsBeginning(true);
+    setAwakeningError(null);
     try {
-      const ok = await useAuthStore.getState().signInGuest();
-      if (ok) {
-        const hasChar = await useGameStore.getState().loadInitialGameData();
-        if (hasChar) {
-          setViewMode('arrival');
-          sharedEngineBridge.enqueue({
-            type: 'playArrivalRail',
-            duration: 5.0,
-            onDone: () => setViewMode('world'),
-          });
-        } else {
-          setViewMode('awakening');
-          sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
-        }
+      const auth = useAuthStore.getState();
+      const sessionReady = !shouldCreateGuestSession(auth.status) || await auth.signInGuest();
+      if (!sessionReady) {
+        throw new Error(useAuthStore.getState().error?.message ?? 'Unable to start a guest session.');
+      }
+
+      const hasChar = await useGameStore.getState().loadInitialGameData();
+      const game = useGameStore.getState();
+      if (game.error) throw new Error(game.error);
+      if (hasChar) {
+        setViewMode('arrival');
+        sharedEngineBridge.enqueue({
+          type: 'playArrivalRail',
+          duration: 5.0,
+          onDone: () => setViewMode('world'),
+        });
       } else {
-        // Fallback: if guest sign-in returned false, transition to awakening
-        setViewMode('awakening');
-        sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
+        // Let the landscape arrive before opening character creation.
+        setViewMode('arrival');
+        sharedEngineBridge.enqueue({
+          type: 'playArrivalRail',
+          duration: 4.5,
+          onDone: () => {
+            setViewMode('awakening');
+            sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
+          },
+        });
       }
     } catch (err) {
-      console.warn('[Arkvoid] Begin action error, transitioning to Awakening:', err);
-      setViewMode('awakening');
-      sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
+      const message = err instanceof Error ? err.message : 'Unable to open the world. Please try again.';
+      console.warn('[Arkvoid] Begin action error:', err);
+      setAwakeningError(message);
+      setViewMode('gate');
+      sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'gate' });
     } finally {
       setIsBeginning(false);
     }
@@ -227,8 +241,15 @@ export default function WorldHost({
           onDone: () => setViewMode('world'),
         });
       } else {
-        setViewMode('awakening');
-        sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
+        setViewMode('arrival');
+        sharedEngineBridge.enqueue({
+          type: 'playArrivalRail',
+          duration: 4.5,
+          onDone: () => {
+            setViewMode('awakening');
+            sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
+          },
+        });
       }
     }
   }, []);
@@ -255,7 +276,12 @@ export default function WorldHost({
 
   const handleSkipArrival = useCallback(() => {
     sharedEngineBridge.enqueue({ type: 'skipArrivalRail' });
-    setViewMode('world');
+    if (useGameStore.getState().character) {
+      setViewMode('world');
+    } else {
+      setViewMode('awakening');
+      sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
+    }
   }, []);
 
   const syncVignetteOverlay = useCallback(() => {
@@ -512,6 +538,7 @@ export default function WorldHost({
           onBegin={handleBegin}
           onAccountResolved={handleAccountResolved}
           isLoading={isBeginning}
+          errorMessage={awakeningError}
         />
       )}
 
