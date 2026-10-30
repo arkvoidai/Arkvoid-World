@@ -523,6 +523,13 @@ export class Wanderer extends THREE.Group {
   /**
    * Head, glowing eye marks, and form-specific attachments.
    */
+  private getCharacterHairMaterial(): THREE.MeshStandardMaterial {
+    const colour = this.resident === 'meilin' ? '#202634'
+      : this.resident === 'yue' ? '#29231F'
+      : this.resident === 'sylva' ? '#49372D' : '#30231F';
+    return this.materials.getHairMaterial(colour);
+  }
+
   private buildHeadAndAccessories(): void {
     this.eyeGroup = new THREE.Group();
     this.eyeGroup.name = 'face_and_hair';
@@ -672,7 +679,7 @@ export class Wanderer extends THREE.Group {
     for (const geometry of hairParts) geometry.dispose();
     if (!hairGeometry) throw new Error('Unable to build wanderer hair geometry');
     hairGeometry.computeVertexNormals();
-    const hairMesh = new THREE.Mesh(hairGeometry, this.materials.getHairMaterial());
+    const hairMesh = new THREE.Mesh(hairGeometry, this.getCharacterHairMaterial());
     hairMesh.name = 'wanderer_hair';
     hairMesh.castShadow = true;
     this.eyeGroup.add(hairMesh);
@@ -741,7 +748,7 @@ export class Wanderer extends THREE.Group {
         this.collarMesh = collar;
         this.skeleton.neck.add(collar);
 
-        const bun = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 10), this.materials.getHairMaterial());
+        const bun = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 10), this.getCharacterHairMaterial());
         bun.position.set(0, 0.14, -0.08);
         this.hairMesh = bun;
         this.skeleton.head.add(bun);
@@ -796,7 +803,7 @@ export class Wanderer extends THREE.Group {
 
     // Named women of the wider world receive distinct long-hair silhouettes and crafted ornaments.
     if (this.resident === 'meilin' || this.resident === 'yue' || this.resident === 'sylva') {
-      const hairMat = this.materials.getHairMaterial();
+      const hairMat = this.getCharacterHairMaterial();
       const backHair = new THREE.Mesh(new THREE.SphereGeometry(0.12, 18, 14), hairMat);
       backHair.name = 'resident_long_hair';
       backHair.position.set(0, -0.13, -0.055);
