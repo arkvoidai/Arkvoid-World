@@ -111,6 +111,7 @@ export class ShowcaseWorldSystem implements System {
   private inputManager: InputManager | null = null;
   private cameraRig: CameraRig | null = null;
   private interactables: InteractablesSystem | null = null;
+  private npcDialogueCloseHandler: (() => void) | null = null;
   private actorsLineup: ActorsLineup | null = null;
   readonly isActorsMode: boolean = false;
   playerForm: FormId = 0;
@@ -456,6 +457,22 @@ export class ShowcaseWorldSystem implements System {
     corvin.rotation.y = -Math.PI / 2;
     corvin.setAnimationState('idle');
 
+    // Three named women inhabit the new continents, each with a distinct form and palette.
+    const meilin = this.wandererPool.spawn('meilin', { resident: 'meilin', form: 3 });
+    meilin.position.set(2385, heightAt(2385, -3575) ?? 72, -3575);
+    meilin.rotation.y = Math.PI * 0.72;
+    meilin.setAnimationState('idle');
+
+    const yue = this.wandererPool.spawn('yue', { resident: 'yue', form: 1 });
+    yue.position.set(-4940, heightAt(-4940, -2390) ?? 48, -2390);
+    yue.rotation.y = -Math.PI / 2;
+    yue.setAnimationState('idle');
+
+    const sylva = this.wandererPool.spawn('sylva', { resident: 'sylva', form: 3 });
+    sylva.position.set(-1775, heightAt(-1775, 4260) ?? 60, 4260);
+    sylva.rotation.y = Math.PI;
+    sylva.setAnimationState('idle');
+
     // Local Player Character (at saved position if available, else SPAWN 0, 0, 14)
     const savedChar = useGameStore.getState().character;
     const initialPos = savedChar?.pos
@@ -532,6 +549,14 @@ export class ShowcaseWorldSystem implements System {
       },
     });
 
+    if (typeof window !== 'undefined') {
+      this.npcDialogueCloseHandler = () => {
+        this.playerController?.unlock('npc-dialogue');
+        this.playerController?.setState('idle');
+      };
+      window.addEventListener('arkvoid:npc-close', this.npcDialogueCloseHandler);
+    }
+
     // Three distinct world gates connect Home Reach to three fully walkable continents.
     for (const gate of HOME_REGION_GATES) {
       const destination = EXPANDED_REGIONS.find((region) => region.id === gate.regionId);
@@ -566,6 +591,30 @@ export class ShowcaseWorldSystem implements System {
           this.playerController!.teleport(0, homeY, 14, Math.PI);
           this.localPlayer?.setAnimationState('idle', 0.2);
           ctx.events.emit('toast', { message: 'Returned to Home Reach' });
+        },
+      });
+    }
+
+    const residents = [
+      { id: 'meilin', name: 'Meilin', x: 2385, z: -3575 },
+      { id: 'yue', name: 'Yue', x: -4940, z: -2390 },
+      { id: 'sylva', name: 'Sylva', x: -1775, z: 4260 },
+    ] as const;
+    for (const resident of residents) {
+      this.interactables.register({
+        id: 'talk-' + resident.id,
+        kind: 'custom',
+        position: new THREE.Vector3(resident.x, heightAt(resident.x, resident.z) ?? 0, resident.z),
+        radius: 3.6,
+        label: resident.name,
+        verb: 'Talk to',
+        enabled: () => !this.playerController!.isLocked(),
+        onInteract: () => {
+          this.playerController!.lock('npc-dialogue');
+          this.playerController!.setState('talk');
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('arkvoid:npc-talk', { detail: { npcId: resident.id } }));
+          }
         },
       });
     }
@@ -1153,6 +1202,10 @@ export class ShowcaseWorldSystem implements System {
 
   dispose(): void {
     this.railController.stop();
+    if (this.npcDialogueCloseHandler && typeof window !== 'undefined') {
+      window.removeEventListener('arkvoid:npc-close', this.npcDialogueCloseHandler);
+      this.npcDialogueCloseHandler = null;
+    }
     if (this.unsubCommand) {
       this.unsubCommand();
       this.unsubCommand = null;

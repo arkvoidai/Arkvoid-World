@@ -95,6 +95,22 @@ test('Step 12: Wanderer body hierarchy, proportions and smooth lathe robe', () =
   sageWanderer.dispose();
 });
 
+test('Step 12: Named women residents have distinct long-hair and ornament meshes', () => {
+  const residents = [
+    new Wanderer({ resident: 'meilin', form: 3 }),
+    new Wanderer({ resident: 'yue', form: 1 }),
+    new Wanderer({ resident: 'sylva', form: 3 }),
+  ];
+  for (const resident of residents) {
+    assert.ok(resident.getObjectByName('face_eyes'));
+    assert.ok(resident.getObjectByName('face_features'));
+    assert.ok(resident.getObjectByName('resident_long_hair'));
+    assert.ok(resident.getObjectByName('resident_hair_lock'));
+    assert.ok(resident.getObjectByName('resident_hair_ornament'));
+    resident.dispose();
+  }
+});
+
 test('Step 12: WandererMaterials PBR fabric sheen, leanings palette and textures', () => {
   const mats = WandererMaterials.get();
 

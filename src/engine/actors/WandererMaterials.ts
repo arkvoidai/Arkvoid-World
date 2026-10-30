@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 export type LeaningId = 'dawn' | 'dusk' | 'still';
 export type FormId = 0 | 1 | 2 | 3; // 0: Traveller, 1: Scholar, 2: Warden, 3: Sage
-export type ResidentId = 'hale' | 'ione' | 'tamsin' | 'corvin';
+export type ResidentId = 'hale' | 'ione' | 'tamsin' | 'corvin' | 'meilin' | 'yue' | 'sylva';
 
 export interface LeaningColours {
   primary: THREE.Color;
@@ -343,6 +343,21 @@ export class WandererMaterials {
         side: THREE.DoubleSide,
       });
       this.accessoryMaterials.set('hair', mat);
+    }
+    return mat;
+  }
+
+  /** Cached silk-and-metal accent used by resident hair ornaments. */
+  getAdornmentMaterial(color: string): THREE.MeshStandardMaterial {
+    const key = 'adornment:' + color;
+    let mat = this.accessoryMaterials.get(key) as THREE.MeshStandardMaterial;
+    if (!mat) {
+      mat = new THREE.MeshStandardMaterial({
+        color,
+        roughness: 0.34,
+        metalness: 0.38,
+      });
+      this.accessoryMaterials.set(key, mat);
     }
     return mat;
   }

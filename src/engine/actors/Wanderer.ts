@@ -117,6 +117,15 @@ export class Wanderer extends THREE.Group {
     } else if (this.resident === 'corvin') {
       this.form = 2; // Warden base
       this.leaning = 'dawn';
+    } else if (this.resident === 'meilin') {
+      this.form = config.form ?? 3;
+      this.leaning = 'dusk';
+    } else if (this.resident === 'yue') {
+      this.form = config.form ?? 1;
+      this.leaning = 'still';
+    } else if (this.resident === 'sylva') {
+      this.form = config.form ?? 0;
+      this.leaning = 'dawn';
     } else {
       this.form = config.form ?? 0;
       this.leaning = config.leaning ?? 'dawn';
@@ -783,6 +792,42 @@ export class Wanderer extends THREE.Group {
       sword.rotation.z = -Math.PI / 5;
       sword.position.set(-0.20, 0.65, -0.05);
       this.skeleton.root.add(sword);
+    }
+
+    // Named women of the wider world receive distinct long-hair silhouettes and crafted ornaments.
+    if (this.resident === 'meilin' || this.resident === 'yue' || this.resident === 'sylva') {
+      const hairMat = this.materials.getHairMaterial();
+      const backHair = new THREE.Mesh(new THREE.SphereGeometry(0.12, 18, 14), hairMat);
+      backHair.name = 'resident_long_hair';
+      backHair.position.set(0, -0.13, -0.055);
+      backHair.scale.set(0.98, 1.72, 0.86);
+      backHair.castShadow = true;
+      this.eyeGroup.add(backHair);
+
+      for (const side of [-1, 1]) {
+        const lock = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.055, 0.42, 8), hairMat);
+        lock.name = 'resident_hair_lock';
+        lock.position.set(side * 0.125, -0.12, 0.015);
+        lock.rotation.z = side * -0.12;
+        lock.castShadow = true;
+        this.eyeGroup.add(lock);
+      }
+
+      const ornamentColor = this.resident === 'meilin' ? '#B77B65' : this.resident === 'yue' ? '#D6B86D' : '#8EAC75';
+      const ornamentMat = this.materials.getAdornmentMaterial(ornamentColor);
+      const flower = new THREE.Mesh(new THREE.IcosahedronGeometry(0.045, 1), ornamentMat);
+      flower.name = 'resident_hair_ornament';
+      flower.position.set(this.resident === 'yue' ? -0.13 : 0.13, 0.16, -0.035);
+      flower.scale.set(1, 0.72, 0.55);
+      this.eyeGroup.add(flower);
+
+      const pin = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.006, 0.006, 0.24, 8),
+        this.materials.getAdornmentMaterial('#D7B879'),
+      );
+      pin.rotation.z = Math.PI / 2.8;
+      pin.position.set(0.12, 0.14, -0.04);
+      this.eyeGroup.add(pin);
     }
   }
 

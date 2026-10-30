@@ -26,6 +26,7 @@ import { sharedEngineBridge, useWorldBridgeStore } from '@/state/worldBridgeStor
 import { WorldLoadingScreen } from '@/ui/WorldLoadingScreen';
 import { Pill } from '@/ui/Pill';
 import ActorsLineupOverlay from '@/hud/ActorsLineupOverlay';
+import NpcDialogueOverlay from '@/hud/NpcDialogueOverlay';
 import type { FormId, LeaningId } from '@/engine/actors/WandererMaterials';
 import type { AnimationStateName } from '@/engine/actors/Animator';
 
@@ -93,6 +94,7 @@ export default function WorldHost({
   const [firstFrameReady, setFirstFrameReady] = useState(false);
   const [splashMounted, setSplashMounted] = useState(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [activeNpcId, setActiveNpcId] = useState<string | null>(null);
   const [benchmarkReport, setBenchmarkReport] = useState<BenchmarkReport | null>(null);
   const [auditResult, setAuditResult] = useState<SceneAuditResult | null>(null);
   const prompt = useWorldBridgeStore((s) => s.prompt);
@@ -173,6 +175,15 @@ export default function WorldHost({
       cancelled = true;
     };
   }, [viewMode]);
+
+  useEffect(() => {
+    const handleNpcTalk = (event: Event) => {
+      const detail = (event as CustomEvent<{ npcId?: string }>).detail;
+      if (detail?.npcId) setActiveNpcId(detail.npcId);
+    };
+    window.addEventListener('arkvoid:npc-talk', handleNpcTalk);
+    return () => window.removeEventListener('arkvoid:npc-talk', handleNpcTalk);
+  }, []);
 
   // Subscribe to auth state: on sign-out reset to gate
   useEffect(() => {
@@ -560,6 +571,16 @@ export default function WorldHost({
         <GuideWisp
           playerPos={playerCoarse}
           onHallReached={() => setHallReached(true)}
+        />
+      )}
+
+      {activeNpcId && viewMode === 'world' && (
+        <NpcDialogueOverlay
+          npcId={activeNpcId}
+          onClose={() => {
+            window.dispatchEvent(new Event('arkvoid:npc-close'));
+            setActiveNpcId(null);
+          }}
         />
       )}
 

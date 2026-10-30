@@ -305,7 +305,7 @@ export class WorldRegions extends THREE.Group {
     }
   }
 
-  dispose(): void {
+  override dispose(): void {
     this.traverse((object) => {
       if (object instanceof THREE.Mesh || object instanceof THREE.InstancedMesh) {
         object.geometry.dispose();
