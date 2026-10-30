@@ -1,4 +1,4 @@
-export type MapRegionId = 'veiled-peaks' | 'capital-valley' | 'primordial-forest';
+export type MapRegionId = 'home-reach' | 'veiled-peaks' | 'capital-valley' | 'primordial-forest';
 
 const REGIONS: {
   id: MapRegionId;
@@ -9,6 +9,15 @@ const REGIONS: {
   tone: string;
   symbol: string;
 }[] = [
+  {
+    id: 'home-reach',
+    name: 'Home Reach',
+    subtitle: 'THE FIRST SANCTUARY',
+    description: 'A quiet floating sanctuary of stone paths, gardens and waterfalls—the first place most travellers call home.',
+    locations: ['Dawn Terrace', 'Still Garden', 'Falls of Light'],
+    tone: 'from-stone-700 to-emerald-950',
+    symbol: '⌂',
+  },
   {
     id: 'veiled-peaks',
     name: 'Veiled Peaks',
@@ -58,7 +67,7 @@ export default function WorldMapOverlay({
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.26em] text-[#9b8055]">Arkvoid · Atlas</p>
           <h2 className="mt-1 font-serif text-[30px] leading-none sm:text-[36px]">The known world</h2>
-          <p className="mt-1.5 text-[11px] text-[#77796f]">4 regions · 13 named destinations · 3 new continents</p>
+          <p className="mt-1.5 text-[11px] text-[#77796f]">4 regions · 12 named destinations · 3 new continents</p>
         </div>
         <button type="button" aria-label="Close world atlas" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full border border-[#d9d6cc] text-xl text-[#666b62] hover:bg-white">×</button>
       </header>

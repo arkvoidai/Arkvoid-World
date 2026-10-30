@@ -24,7 +24,7 @@ import { LifeSystem } from '@/engine/fx/Life';
 import { REVIEW_SHOTS } from '@/engine/world/reviewShots';
 import { SkyDome } from '@/engine/world/SkyDome';
 import { FarMountainRanges } from '@/engine/world/FarMountainRanges';
-import { WorldRegions, EXPANDED_REGIONS, HOME_REGION_GATES } from '@/engine/world/WorldRegions';
+import { WorldRegions, EXPANDED_REGIONS, HOME_REGION_GATES, expandedRegionAt } from '@/engine/world/WorldRegions';
 import { DiscoveryTracker, discoverableAreaAt } from '@/engine/world/atlas';
 import { WeatherController } from '@/engine/world/sky/Weather';
 import { worldMinute } from '@/lib/worldClock';
@@ -553,8 +553,15 @@ export class ShowcaseWorldSystem implements System {
     if (typeof window !== 'undefined') {
       this.regionTravelHandler = (event: Event) => {
         const detail = (event as CustomEvent<{ regionId?: string }>).detail;
+        if (!this.playerController) return;
+        if (detail?.regionId === 'home-reach') {
+          this.playerController.teleport(0, heightAt(0, 14) ?? 0, 14, Math.PI);
+          this.localPlayer?.setAnimationState('idle', 0.2);
+          ctx.events.emit('toast', { message: 'Returned to Home Reach' });
+          return;
+        }
         const destination = EXPANDED_REGIONS.find((region) => region.id === detail?.regionId);
-        if (!destination || !this.playerController) return;
+        if (!destination) return;
         const x = destination.center.x - 115;
         const z = destination.center.z + 125;
         const y = heightAt(x, z) ?? destination.baseY;
@@ -882,13 +889,17 @@ export class ShowcaseWorldSystem implements System {
     const reduced = ctx.device.reducedMotion;
     const worldDay = Math.floor(worldMinute() / 1440);
     const weatherMinute = worldDay * 1440 + this.skyState.hour * 60;
-    const weather = this.weatherController.update('home-reach', weatherMinute, {
-      temperature: 0.55,
-      moisture: 0.64,
-      snowAllowed: false,
-    });
-    if (this.fog) this.fog.far = Math.max(150, 42000 / weather.fogMultiplier);
     const debugPosition = this.playerController?.position ?? ctx.camera.position;
+    const activeRegion = expandedRegionAt(debugPosition.x, debugPosition.z);
+    const climate = activeRegion?.id === 'veiled-peaks'
+      ? { temperature: 0.12, moisture: 0.84, snowAllowed: true }
+      : activeRegion?.id === 'capital-valley'
+        ? { temperature: 0.68, moisture: 0.76, snowAllowed: false }
+        : activeRegion?.id === 'primordial-forest'
+          ? { temperature: 0.46, moisture: 0.96, snowAllowed: false }
+          : { temperature: 0.55, moisture: 0.64, snowAllowed: false };
+    const weather = this.weatherController.update(activeRegion?.id ?? 'home-reach', weatherMinute, climate);
+    if (this.fog) this.fog.far = Math.max(150, 42000 / weather.fogMultiplier);
     this.expansionInspector?.update(
       debugPosition.x,
       debugPosition.y,
