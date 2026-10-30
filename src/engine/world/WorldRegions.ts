@@ -27,8 +27,9 @@ export const EXPANDED_REGIONS: readonly ExpandedRegionDefinition[] = [
 ];
 
 function smoothNoise(x: number, z: number, seed: number): number {
-  const n = Math.sin(x * 0.013 + z * 0.019 + seed * 9.17) * 43758.5453;
-  return (n - Math.floor(n)) * 2 - 1;
+  const broad = Math.sin(x * 0.006 + z * 0.009 + seed * 9.17);
+  const cross = Math.cos(x * 0.0035 - z * 0.005 + seed * 3.1);
+  return broad * 0.62 + cross * 0.38;
 }
 
 export function expandedRegionAt(x: number, z: number): ExpandedRegionDefinition | null {
