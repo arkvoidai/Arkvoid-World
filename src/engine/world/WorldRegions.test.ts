@@ -64,9 +64,9 @@ test('Only the selected continent is visible while Home Reach keeps its gates', 
     for (const region of EXPANDED_REGIONS) {
       assert.equal(world.getObjectByName('Region_' + region.id)?.visible, false);
     }
-    assert.ok(world.getObjectByName('gate-veiled-peaks'));
-    assert.ok(world.getObjectByName('gate-capital-valley'));
-    assert.ok(world.getObjectByName('gate-primordial-forest'));
+    assert.ok(world.getObjectByName('HomeGate_gate-veiled-peaks'));
+    assert.ok(world.getObjectByName('HomeGate_gate-capital-valley'));
+    assert.ok(world.getObjectByName('HomeGate_gate-primordial-forest'));
   } finally {
     world.dispose();
   }
