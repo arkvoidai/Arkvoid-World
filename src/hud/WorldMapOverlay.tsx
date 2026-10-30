@@ -7,7 +7,7 @@ const REGIONS: {
   description: string;
   locations: string[];
   tone: string;
-  symbol: ReactNode;
+  symbol: string;
 }[] = [
   {
     id: 'veiled-peaks',
