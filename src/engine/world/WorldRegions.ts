@@ -283,13 +283,19 @@ export class WorldRegions extends THREE.Group {
       'primordial-forest': '#8EBE83',
     };
     for (const gate of HOME_REGION_GATES) {
-      addPortalArch(this, gate.position.x, gate.position.y, gate.position.z, gateColours[gate.regionId], 0.82);
+      const portal = new THREE.Group();
+      portal.name = 'HomeGate_' + gate.id;
+      addPortalArch(portal, gate.position.x, gate.position.y, gate.position.z, gateColours[gate.regionId], 0.82);
+      this.add(portal);
     }
     for (const region of EXPANDED_REGIONS) {
       const area = new THREE.Group();
       area.name = 'Region_' + region.id;
       const returnY = expandedRegionHeightAt(region.center.x - 90, region.center.z + 110) ?? region.baseY;
-      addPortalArch(area, region.center.x - 90, returnY, region.center.z + 110, '#E8D8B0', 1.05);
+      const returnPortal = new THREE.Group();
+      returnPortal.name = 'ReturnGate_' + region.id;
+      addPortalArch(returnPortal, region.center.x - 90, returnY, region.center.z + 110, '#E8D8B0', 1.05);
+      area.add(returnPortal);
       const geometry = createTerrain(region, phone);
       const material = new THREE.MeshStandardMaterial({
         color: region.palette.ground,
