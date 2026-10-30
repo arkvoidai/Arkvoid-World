@@ -1,5 +1,6 @@
 import { savePosition, type CharacterPos } from '@/net/api';
 import { areaAt, type ReachableAreaId } from '@/engine/world/layout';
+import { areaAtAtlas } from '@/engine/world/atlas/Atlas';
 
 class PositionSaver {
   private lastSavedPos: CharacterPos | null = null;
@@ -50,6 +51,8 @@ class PositionSaver {
    */
   public resolveArea(pos: CharacterPos, explicitArea?: string): string {
     if (explicitArea) return explicitArea;
+    const atlasArea = areaAtAtlas(pos.x, pos.y, pos.z);
+    if (atlasArea) return atlasArea.id;
     const derived = areaAt(pos.x, pos.z);
     if (derived) return derived;
     return this.lastSavedArea ?? ('dawn-terrace' as ReachableAreaId);

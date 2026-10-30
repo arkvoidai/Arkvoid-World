@@ -304,3 +304,28 @@
 ## Known issues
 - PNG icon binaries (`icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon-180.png`) under `public/icons/` must be supplied by the founder as documented in `public/icons/README.md`; `public/icons/favicon.svg` is active now.
 
+
+## Expansion E1-E5 foundation (2026-10-31)
+- Added a typed World Atlas with one built Home Reach and five planned, non-rendered, non-seeded regions. Planned region data is excluded from built region/area API seeds.
+- Added float64 world coordinate conversion helpers, region/area shapes, overlap/containment validation, built-only spatial lookup, travel graph helpers and one-time three-second area discovery tracking.
+- Reused the existing authenticated `discover_area(p_area)` RPC and current `save_position` coordinate bounds. A migration adds the Sanctuary area foreign-key target; no planned regions or areas are inserted.
+- Added 128 m cell keys, supercell/megacell math, distance rings and unload hysteresis; added provider contracts, deterministic generation-job scheduling with a 3 ms main-thread fallback, upload budgeting and resource LRU accounting.
+- Added four procedural distant mountain silhouette bands and distant waterfall ribbons around Home Reach. Existing islands, authored bridges, collision and near waterfall systems remain unchanged.
+- Added a deterministic regional weather model, cloud coverage/density response, and CPU reference atmosphere transmittance/inscatter helpers.
+- Added deterministic Catmull–Rom river ribbon data generation and water absorption, wetness, shallow-water and waterfall-LOD helper models.
+- Added development-only `?atlas=1`, `?stream=1`, `?terrain=1`, `?sky=1`, and `?water=1` inspectors.
+- Added an expansion test suite covering coordinates, Atlas validity, planned-region isolation, existing area lookup, travel graph, discovery timing, cell math, origin-relative invariance, budget eviction, upload queue, generation cancellation, deterministic mountain height, weather, atmosphere and water helper models.
+
+## Expansion decisions
+- Region origins are centre/anchor points for XZ extents; elevation bands are absolute Y coordinates. This keeps Home Reach at (0, 0, 0). Capital Valley's initial anchor was adjusted west to avoid overlapping the Veiled Peaks envelope; this remains tunable region data.
+- The current mountain range meshes are distant non-walkable silhouettes. They intentionally do not claim to be streamed terrain, a new walkable region or collision geometry.
+- Existing production SQL already contains the `discover_area(p_area text)` RPC and enforces X/Z ±60000 m and Y -4000..9000 m in `save_position`; the application now validates those limits before sending.
+- No third-party art assets were added. The new horizon and water geometry are procedural source code; the existing Home Reach asset pipeline remains responsible for authored materials.
+
+## Expansion known issues and remaining work
+- Generation jobs currently use the deterministic main-thread fallback. Actual module Worker transport, transferable buffers and the migration of existing builders into cell providers remain future work.
+- Floating-origin conversion and rebase math are implemented and tested as primitives; live coordinated rebasing of all scene holders and shaders is not yet enabled.
+- The current Home Reach remains authored island geometry. Worker-generated quadtree terrain, CPU collision parity, river-carved valleys and walkable mountain chunks are not yet implemented.
+- Atmosphere support currently includes a CPU reference model, not the GPU scattering LUT pipeline. Clouds remain the existing layered heightfield/puff renderer with weather-responsive coverage and density; volumetric raymarching, cloud shadows, rain/snow systems and cloud-coupled god rays remain future work.
+- River ribbons are deterministic geometry data and are not yet connected to streamed flow tiles or the live water renderer. Lakes, refraction, planar reflections, underwater collision and waterfall spray/mist LOD remain future work.
+- The repository is scheduled to run typecheck, tests and build in CI for this branch. Until those checks finish, no test/build success is claimed. Android and desktop visual/performance captures are still required before merging.

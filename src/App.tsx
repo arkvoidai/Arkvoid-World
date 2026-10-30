@@ -3,6 +3,7 @@ import { getMissingPublicConfig } from '@/config/public';
 import { SetupScreen } from '@/screens/SetupScreen';
 import { WorldLoadingScreen } from '@/ui/WorldLoadingScreen';
 import { AccountSheet } from '@/ui/AccountSheet';
+import { Logo } from '@/ui/Logo';
 import { useAuthStore } from '@/state/auth';
 
 // Resilient dynamic import that retries on transient network or dev server rebuild glitches

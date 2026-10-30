@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { disposeObject3D } from '@/engine/core/Disposables';
 import type { TimeOfDayState } from '@/engine/world/sky';
 import type { DeviceProfile } from '@/lib/deviceProfile';
+import type { WeatherState } from '@/engine/world/sky/Weather';
 
 const CLOUD_PLANE_VERTEX_SHADER = /* glsl */ `
 varying vec3 vWorldPos;
@@ -20,6 +21,8 @@ uniform float uTime;
 uniform float uSpeed;
 uniform float uDepthTint;
 uniform float uBaseAlpha;
+uniform float uWeatherCoverage;
+uniform float uWeatherDensity;
 uniform float uLayerIndex;
 uniform vec3 uFogColor;
 uniform vec3 uSunColor;
@@ -112,8 +115,11 @@ void main() {
                    * smoothstep(6.0, 14.0, dIslC);
 
   float layerDensity = smoothstep(0.18 + uLayerIndex * 0.04, 0.78, hCenter);
+  layerDensity *= mix(0.72, 1.18, uWeatherCoverage);
+  cloudColor = mix(cloudColor, valleyShade, uWeatherDensity * 0.22);
   float radialAlpha = 1.0 - smoothstep(560.0, 880.0, dist);
   float alpha = uBaseAlpha * mix(0.38, 1.0, layerDensity) * radialAlpha * mix(0.65, 1.0, islandMask);
+  alpha *= mix(0.72, 1.12, uWeatherCoverage) * mix(0.92, 1.14, uWeatherDensity);
 
   gl_FragColor = vec4(cloudColor, alpha);
   #include <tonemapping_fragment>
@@ -298,6 +304,8 @@ export class CloudSea {
           uSpeed: { value: layerSpeeds[i]! },
           uDepthTint: { value: layerDepthTints[i]! },
           uBaseAlpha: { value: layerAlphas[i]! },
+          uWeatherCoverage: { value: 0.18 },
+          uWeatherDensity: { value: 0.12 },
           uLayerIndex: { value: i },
           uFogColor: { value: new THREE.Color('#FFD2B3') },
           uSunColor: { value: new THREE.Color('#FFB073') },
@@ -410,6 +418,7 @@ export class CloudSea {
     elapsed: number,
     camera: THREE.PerspectiveCamera,
     reducedMotion: boolean,
+    weather?: WeatherState,
   ): void {
     const effectiveTime = reducedMotion ? 0 : elapsed;
 
@@ -419,6 +428,10 @@ export class CloudSea {
       plane.position.z = camera.position.z;
       const u = plane.material.uniforms;
       u.uTime!.value = effectiveTime;
+      if (weather) {
+        u.uWeatherCoverage!.value = weather.coverage;
+        u.uWeatherDensity!.value = weather.density;
+      }
       (u.uCameraPos!.value as THREE.Vector3).copy(camera.position);
     }
 
