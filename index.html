@@ -6,25 +6,62 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, interactive-widget=overlays-content"
     />
-    <meta name="theme-color" content="#FBFAF7" />
+    <meta name="theme-color" content="#1D1724" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="application-name" content="Arkvoid" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="robots" content="noindex" />
-    <title>Arkvoid</title>
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <link rel="canonical" href="https://world.arkvoid.com/" />
+    <title>Arkvoid | A World That Remembers You</title>
     <meta
       name="description"
-      content="Celestial Frontier — a persistent, living world in a browser."
+      content="Enter Arkvoid, a persistent fantasy world where characters remember you, build relationships, and continue their lives while you are away."
     />
-    <meta property="og:title" content="Arkvoid" />
+    <meta property="og:site_name" content="Arkvoid" />
+    <meta property="og:title" content="Arkvoid | A World That Remembers You" />
     <meta
       property="og:description"
-      content="Celestial Frontier — a persistent, living world in a browser."
+      content="A persistent fantasy world where characters remember you and continue living while you are away."
     />
     <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
+    <meta property="og:url" content="https://world.arkvoid.com/" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Arkvoid | A World That Remembers You" />
+    <meta
+      name="twitter:description"
+      content="A persistent fantasy world where characters remember you and continue living while you are away."
+    />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://world.arkvoid.com/#website",
+            "url": "https://world.arkvoid.com/",
+            "name": "Arkvoid",
+            "alternateName": "Arkvoid World"
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://world.arkvoid.com/#application",
+            "name": "Arkvoid",
+            "applicationCategory": "GameApplication",
+            "operatingSystem": "Web browser",
+            "url": "https://world.arkvoid.com/",
+            "description": "A persistent fantasy world where characters remember you and continue their lives while you are away.",
+            "publisher": {
+              "@type": "Organization",
+              "name": "Arkvoid"
+            }
+          }
+        ]
+      }
+    </script>
     <style>
       html,
       body {
@@ -33,14 +70,15 @@
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background-color: #fbfaf7;
-        color: #17141f;
+        background-color: #1d1724;
+        color: #f6f0e9;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
       }
       #root {
         width: 100%;
         height: 100%;
+        background-color: #1d1724;
       }
       .arkvoid-boot {
         position: fixed;
@@ -48,14 +86,15 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background-color: #fbfaf7;
+        background-color: #1d1724;
         background-image:
           radial-gradient(
-            circle at 46% 48%,
-            rgba(255, 178, 122, 0.22) 0%,
-            rgba(185, 166, 255, 0.18) 38%,
-            rgba(251, 250, 247, 0) 72%
-          );
+            circle at 50% 46%,
+            rgba(194, 119, 92, 0.18) 0%,
+            rgba(92, 63, 96, 0.16) 34%,
+            rgba(29, 23, 36, 0) 74%
+          ),
+          linear-gradient(160deg, #211a2a 0%, #1d1724 58%, #18141e 100%);
       }
       .arkvoid-boot-wordmark {
         font-family:
@@ -64,22 +103,21 @@
           BlinkMacSystemFont,
           'Segoe UI',
           serif;
-        font-weight: 300;
-        font-size: 1.5rem;
-        letter-spacing: 0.22em;
-        color: #17141f;
-        opacity: 0.72;
+        font-weight: 400;
+        font-size: 1.15rem;
+        letter-spacing: 0.34em;
+        color: #f6f0e9;
+        opacity: 0.82;
         user-select: none;
       }
     </style>
   </head>
   <body>
     <div id="root">
-      <div class="arkvoid-boot" aria-hidden="true">
-        <span class="arkvoid-boot-wordmark">Arkvoid</span>
+      <div class="arkvoid-boot" role="status" aria-label="Loading Arkvoid">
+        <span class="arkvoid-boot-wordmark">ARKVOID</span>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

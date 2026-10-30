@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createOutwardGridIndices } from '@/engine/world/meshIndices';
 import {
   ISLANDS,
   type IslandDef,
@@ -231,20 +232,8 @@ export class IslandLandformMesh extends THREE.Group {
       }
     }
 
-    // Build indices
-    const indices: number[] = [];
-    const stride = segments + 1;
-    for (let r = 0; r < totalRings; r++) {
-      for (let s = 0; s < segments; s++) {
-        const i0 = r * stride + s;
-        const i1 = i0 + 1;
-        const i2 = (r + 1) * stride + s;
-        const i3 = i2 + 1;
-
-        indices.push(i0, i2, i1);
-        indices.push(i1, i2, i3);
-      }
-    }
+    // Keep the visible top surface front-facing; do not mask reversed winding with DoubleSide.
+    const indices = createOutwardGridIndices(totalRings, segments);
 
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));

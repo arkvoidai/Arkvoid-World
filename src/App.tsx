@@ -1,7 +1,7 @@
 import { Component, Suspense, lazy, useState, type ErrorInfo, type ReactNode } from 'react';
 import { getMissingPublicConfig } from '@/config/public';
 import { SetupScreen } from '@/screens/SetupScreen';
-import { Logo } from '@/ui/Logo';
+import { WorldLoadingScreen } from '@/ui/WorldLoadingScreen';
 import { AccountSheet } from '@/ui/AccountSheet';
 import { useAuthStore } from '@/state/auth';
 
@@ -87,11 +87,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 function PearlBootScreen() {
-  return (
-    <main className="fixed inset-0 flex items-center justify-center overflow-hidden bg-pearl">
-      <Logo size={42} />
-    </main>
-  );
+  return <WorldLoadingScreen className="fixed inset-0 z-[80]" />;
 }
 
 export default function App() {
