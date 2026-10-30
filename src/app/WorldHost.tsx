@@ -26,6 +26,8 @@ import { sharedEngineBridge, useWorldBridgeStore } from '@/state/worldBridgeStor
 import { WorldLoadingScreen } from '@/ui/WorldLoadingScreen';
 import { Pill } from '@/ui/Pill';
 import ActorsLineupOverlay from '@/hud/ActorsLineupOverlay';
+import NpcDialogueOverlay from '@/hud/NpcDialogueOverlay';
+import WorldMapOverlay, { type MapRegionId } from '@/hud/WorldMapOverlay';
 import type { FormId, LeaningId } from '@/engine/actors/WandererMaterials';
 import type { AnimationStateName } from '@/engine/actors/Animator';
 
@@ -36,6 +38,7 @@ import { GuideWisp } from '@/hud/GuideWisp';
 import { useAuthStore } from '@/state/auth';
 import { useGameStore } from '@/state/game';
 import { bootstrapSession } from '@/app/bootstrap';
+import { resolvePostBootstrapMode, shouldCreateGuestSession } from '@/app/entryFlow';
 import type { Leaning } from '@/net/api';
 
 const VisualReviewOverlay =
@@ -92,6 +95,8 @@ export default function WorldHost({
   const [firstFrameReady, setFirstFrameReady] = useState(false);
   const [splashMounted, setSplashMounted] = useState(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [activeNpcId, setActiveNpcId] = useState<string | null>(null);
+  const [showWorldMap, setShowWorldMap] = useState(false);
   const [benchmarkReport, setBenchmarkReport] = useState<BenchmarkReport | null>(null);
   const [auditResult, setAuditResult] = useState<SceneAuditResult | null>(null);
   const prompt = useWorldBridgeStore((s) => s.prompt);
@@ -140,8 +145,10 @@ export default function WorldHost({
           setViewMode('gate');
           sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'gate' });
         } else {
-          if (outcome.hasCharacter) {
-            // Returning user: 5s arrival rail, then world
+          // Existing guests without a character return to the visible world gate.
+          // Only a saved character bypasses the gate and plays the arrival rail.
+          const destination = resolvePostBootstrapMode(outcome);
+          if (destination === 'arrival') {
             setViewMode('arrival');
             sharedEngineBridge.enqueue({
               type: 'playArrivalRail',
@@ -151,9 +158,8 @@ export default function WorldHost({
               },
             });
           } else {
-            // Session without character: awakening
-            setViewMode('awakening');
-            sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
+            setViewMode('gate');
+            sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'gate' });
           }
         }
         setSessionReady(true);
@@ -172,6 +178,15 @@ export default function WorldHost({
     };
   }, [viewMode]);
 
+  useEffect(() => {
+    const handleNpcTalk = (event: Event) => {
+      const detail = (event as CustomEvent<{ npcId?: string }>).detail;
+      if (detail?.npcId) setActiveNpcId(detail.npcId);
+    };
+    window.addEventListener('arkvoid:npc-talk', handleNpcTalk);
+    return () => window.removeEventListener('arkvoid:npc-talk', handleNpcTalk);
+  }, []);
+
   // Subscribe to auth state: on sign-out reset to gate
   useEffect(() => {
     const unsub = useAuthStore.subscribe((state, prevState) => {
@@ -186,30 +201,42 @@ export default function WorldHost({
 
   const handleBegin = useCallback(async () => {
     setIsBeginning(true);
+    setAwakeningError(null);
     try {
-      const ok = await useAuthStore.getState().signInGuest();
-      if (ok) {
-        const hasChar = await useGameStore.getState().loadInitialGameData();
-        if (hasChar) {
-          setViewMode('arrival');
-          sharedEngineBridge.enqueue({
-            type: 'playArrivalRail',
-            duration: 5.0,
-            onDone: () => setViewMode('world'),
-          });
-        } else {
-          setViewMode('awakening');
-          sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
-        }
+      const auth = useAuthStore.getState();
+      const sessionReady = !shouldCreateGuestSession(auth.status) || await auth.signInGuest();
+      if (!sessionReady) {
+        throw new Error(useAuthStore.getState().error?.message ?? 'Unable to start a guest session.');
+      }
+
+      const hasChar = await useGameStore.getState().loadInitialGameData();
+      const game = useGameStore.getState();
+      if (game.error) throw new Error(game.error);
+      if (hasChar) {
+        setViewMode('arrival');
+        sharedEngineBridge.enqueue({
+          type: 'playArrivalRail',
+          duration: 5.0,
+          onDone: () => setViewMode('world'),
+        });
       } else {
-        // Fallback: if guest sign-in returned false, transition to awakening
-        setViewMode('awakening');
-        sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
+        // Let the landscape arrive before opening character creation.
+        setViewMode('arrival');
+        sharedEngineBridge.enqueue({
+          type: 'playArrivalRail',
+          duration: 4.5,
+          onDone: () => {
+            setViewMode('awakening');
+            sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
+          },
+        });
       }
     } catch (err) {
-      console.warn('[Arkvoid] Begin action error, transitioning to Awakening:', err);
-      setViewMode('awakening');
-      sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
+      const message = err instanceof Error ? err.message : 'Unable to open the world. Please try again.';
+      console.warn('[Arkvoid] Begin action error:', err);
+      setAwakeningError(message);
+      setViewMode('gate');
+      sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'gate' });
     } finally {
       setIsBeginning(false);
     }
@@ -227,8 +254,15 @@ export default function WorldHost({
           onDone: () => setViewMode('world'),
         });
       } else {
-        setViewMode('awakening');
-        sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
+        setViewMode('arrival');
+        sharedEngineBridge.enqueue({
+          type: 'playArrivalRail',
+          duration: 4.5,
+          onDone: () => {
+            setViewMode('awakening');
+            sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
+          },
+        });
       }
     }
   }, []);
@@ -255,7 +289,12 @@ export default function WorldHost({
 
   const handleSkipArrival = useCallback(() => {
     sharedEngineBridge.enqueue({ type: 'skipArrivalRail' });
-    setViewMode('world');
+    if (useGameStore.getState().character) {
+      setViewMode('world');
+    } else {
+      setViewMode('awakening');
+      sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'awakening' });
+    }
   }, []);
 
   const syncVignetteOverlay = useCallback(() => {
@@ -300,6 +339,23 @@ export default function WorldHost({
       return null;
     }
   }, [syncVignetteOverlay]);
+
+  const currentRegionId = (() => {
+    const regions = [
+      { id: 'veiled-peaks', x: 2400, z: -3600 },
+      { id: 'capital-valley', x: -5000, z: -2400 },
+      { id: 'primordial-forest', x: -1800, z: 4200 },
+    ];
+    for (const region of regions) {
+      if (Math.hypot(playerCoarse.x - region.x, playerCoarse.z - region.z) < 760) return region.id;
+    }
+    return 'home-reach';
+  })();
+
+  const handleMapTravel = useCallback((regionId: MapRegionId) => {
+    window.dispatchEvent(new CustomEvent('arkvoid:travel-region', { detail: { regionId } }));
+    setShowWorldMap(false);
+  }, []);
 
   const handleSelectActorAnimation = useCallback((anim: AnimationStateName) => {
     showcaseRef.current?.getActorsLineup()?.setAnimation(anim);
@@ -512,6 +568,7 @@ export default function WorldHost({
           onBegin={handleBegin}
           onAccountResolved={handleAccountResolved}
           isLoading={isBeginning}
+          errorMessage={awakeningError}
         />
       )}
 
@@ -533,6 +590,36 @@ export default function WorldHost({
         <GuideWisp
           playerPos={playerCoarse}
           onHallReached={() => setHallReached(true)}
+        />
+      )}
+
+      {activeNpcId && viewMode === 'world' && (
+        <NpcDialogueOverlay
+          npcId={activeNpcId}
+          onClose={() => {
+            window.dispatchEvent(new Event('arkvoid:npc-close'));
+            setActiveNpcId(null);
+          }}
+        />
+      )}
+
+      {viewMode === 'world' && (
+        <button
+          type="button"
+          onClick={() => setShowWorldMap(true)}
+          className="pointer-events-auto fixed right-4 top-4 z-overlay flex items-center gap-2 rounded-full border border-white/60 bg-[#f8f6f0]/90 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#293a31] shadow-glass backdrop-blur-xl transition hover:bg-white sm:right-6 sm:top-6"
+          aria-label="Open world atlas"
+        >
+          <span className="text-sm">⌖</span>
+          World map
+        </button>
+      )}
+
+      {showWorldMap && viewMode === 'world' && (
+        <WorldMapOverlay
+          currentRegion={currentRegionId}
+          onClose={() => setShowWorldMap(false)}
+          onTravel={handleMapTravel}
         />
       )}
 

@@ -12,7 +12,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"index.html\"",
     "check:collision": "tsx scripts/checkCollision.ts",
     "check:budget": "node scripts/check-budget.mjs",
-    "test": "tsx --test src/engine/world/__tests__/*.ts src/engine/world/expansion.test.ts src/engine/world/step7.test.ts src/engine/world/step8.test.ts src/engine/world/step8b.test.ts src/engine/world/step9.test.ts src/engine/core/step10.test.ts src/engine/world/step11.test.ts src/engine/actors/step12.test.ts src/engine/locomotion/step13.test.ts src/net/step14.test.ts src/engine/world/step15.test.ts"
+    "test": "tsx --test src/app/entryFlow.test.ts src/engine/world/__tests__/*.ts src/engine/world/WorldRegions.test.ts src/engine/world/expansion.test.ts src/engine/world/step7.test.ts src/engine/world/step8.test.ts src/engine/world/step8b.test.ts src/engine/world/step9.test.ts src/engine/core/step10.test.ts src/engine/world/step11.test.ts src/engine/actors/step12.test.ts src/engine/locomotion/step13.test.ts src/net/step14.test.ts src/engine/world/step15.test.ts"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",

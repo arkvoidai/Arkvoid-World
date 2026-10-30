@@ -8,6 +8,7 @@ import { TreeSystem } from './Trees';
 import { FlowerSystem } from '../fx/Flowers';
 import { GrassSystem } from '../fx/Grass';
 import { LifeSystem } from '../fx/Life';
+import { FarMountainRanges } from './FarMountainRanges';
 import { heightAt, resolveMove } from './collision';
 import { PLATFORMS } from './layout';
 
@@ -86,6 +87,16 @@ test('Step 8 TreeSystem: procedural generation of 5 species, canopy LODs, and fa
   assert.ok(trees.totalTrees > 50, `Expected > 50 trees, got ${trees.totalTrees}`);
   assert.ok(trees.fallingLeaves);
 
+  const mapleCanopy = trees.getObjectByName('Canopy_maple') as THREE.InstancedMesh;
+  assert.ok(mapleCanopy, 'maple canopy exists');
+  const tints = mapleCanopy.geometry.getAttribute('aLeafTint');
+  assert.ok(tints, 'canopy has per-leaf species tint');
+  let maxTint = 0;
+  for (let i = 0; i < tints.count; i++) {
+    maxTint = Math.max(maxTint, tints.getX(i), tints.getY(i), tints.getZ(i));
+  }
+  assert.ok(maxTint < 0.55, 'foliage uses a restrained natural palette rather than vivid paper colours');
+
   // Update
   const dummyCam = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
   dummyCam.position.set(0, 10, 30);
@@ -94,6 +105,18 @@ test('Step 8 TreeSystem: procedural generation of 5 species, canopy LODs, and fa
 
   trees.dispose();
   wind.dispose();
+});
+
+test('Home Reach is framed by nearby mountain silhouettes and distant falls', () => {
+  const ranges = new FarMountainRanges(true);
+  const nearRange = ranges.getObjectByName('MountainRange_1250') as THREE.Mesh;
+  const outerRange = ranges.getObjectByName('MountainRange_6400') as THREE.Mesh;
+  const nearFall = ranges.getObjectByName('DistantWaterfall_0') as THREE.Mesh;
+  assert.ok(nearRange?.geometry.getAttribute('position').count > 0);
+  assert.ok(outerRange?.geometry.getAttribute('position').count > 0);
+  assert.ok(nearFall?.geometry.getAttribute('position').count > 0);
+  assert.ok(Math.abs(nearRange.position.length()) < 1, 'ridge band is framed around Home Reach');
+  ranges.dispose();
 });
 
 test('Step 8 FlowerSystem: procedural canvas atlas and instanced ground drifts', () => {

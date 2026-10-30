@@ -246,6 +246,41 @@ test('Step 13: CameraRig third-person spring arm, pitch clamps, and hall closer 
   rigPhone.dispose();
 });
 
+test('Camera direction stays fixed during a sustained drag and recentres only after release', () => {
+  const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.1, 1000);
+  const rig = new CameraRig(camera, mockPhoneDevice);
+  const startYaw = rig.yaw;
+  const player = new THREE.Vector3(0, 0, 0);
+  const rightFacing = -Math.PI / 2;
+
+  // Simulate holding the right side of the stick while the player turns right.
+  // The camera must not chase that facing direction while the thumb is still down.
+  for (let i = 0; i < 240; i++) {
+    rig.update(1 / 60, player, rightFacing, 0.6, 0, 0, true);
+  }
+  assert.ok(Math.abs(rig.yaw - startYaw) < 1e-8, 'camera yaw must remain stable while movement is held');
+
+  // Once the player releases the stick, the camera may gently return behind them.
+  for (let i = 0; i < 300; i++) {
+    rig.update(1 / 60, player, rightFacing, 0, 0, 0, false);
+  }
+  assert.ok(Math.abs(rig.yaw - rightFacing) < 0.03, 'camera should recentre after the player stops moving');
+  rig.dispose();
+});
+
+test('Right-stick movement at a fixed camera yaw follows a straight world-space line', () => {
+  const controller = new PlayerController();
+  const right: InputState = {
+    moveX: 1, moveY: 0, lookDeltaYaw: 0, lookDeltaPitch: 0,
+    run: false, interact: false, cancel: false,
+  };
+  const start = controller.position.clone();
+  for (let i = 0; i < 90; i++) controller.update(1 / 60, right, 0);
+  assert.ok(controller.position.x > start.x + 1, 'right input should move along +X at camera yaw 0');
+  assert.ok(Math.abs(controller.position.z - start.z) < 0.08, 'right input should not curve into the Z axis');
+  controller.dispose();
+});
+
 test('Step 13: InteractablesSystem candidate scoring, bell ringing, and seated state', () => {
   const controller = new PlayerController();
   const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.1, 1000);

@@ -107,13 +107,18 @@ test('Atlas data has unique IDs, contained area spawns, and non-overlapping regi
   }
 });
 
-test('Planned regions never appear in database seeds or built area lookup', () => {
-  assert.equal(BUILT_REGIONS.length, 1);
-  assert.deepEqual(DATABASE_REGION_SEED.map((region) => region.id), ['home-reach']);
-  assert.ok(PLANNED_REGIONS.length >= 5);
-  assert.equal(DATABASE_AREA_SEED.some((area) => area.id === 'veiled-peaks'), false);
-  assert.equal(DATABASE_AREA_SEED.some((area) => area.id === 'capital-valley'), false);
-  assert.equal(areaAtAtlas(2400, 100, -3600), null);
+test('Three distinct continents are built, seeded, and spatially discoverable', () => {
+  assert.equal(BUILT_REGIONS.length, 4);
+  assert.deepEqual(DATABASE_REGION_SEED.map((region) => region.id), [
+    'home-reach', 'veiled-peaks', 'capital-valley', 'primordial-forest',
+  ]);
+  assert.equal(PLANNED_REGIONS.length, 2);
+  assert.ok(DATABASE_AREA_SEED.some((area) => area.id === 'cloud-ring-monastery'));
+  assert.ok(DATABASE_AREA_SEED.some((area) => area.id === 'imperial-plaza'));
+  assert.ok(DATABASE_AREA_SEED.some((area) => area.id === 'world-tree-sanctum'));
+  assert.equal(areaAtAtlas(2400, 100, -3600)?.id, 'cloud-ring-monastery');
+  assert.equal(areaAtAtlas(-4890, 48, -2490)?.id, 'imperial-plaza');
+  assert.equal(areaAtAtlas(-1800, 60, 4200)?.id, 'world-tree-sanctum');
 });
 
 test('Atlas preserves areaAt for every existing authored Home Reach spot', () => {

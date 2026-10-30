@@ -24,6 +24,7 @@ import { LifeSystem } from '@/engine/fx/Life';
 import { REVIEW_SHOTS } from '@/engine/world/reviewShots';
 import { SkyDome } from '@/engine/world/SkyDome';
 import { FarMountainRanges } from '@/engine/world/FarMountainRanges';
+import { WorldRegions, EXPANDED_REGIONS, HOME_REGION_GATES, expandedRegionAt, expandedRegionHeightAt } from '@/engine/world/WorldRegions';
 import { DiscoveryTracker, discoverableAreaAt } from '@/engine/world/atlas';
 import { WeatherController } from '@/engine/world/sky/Weather';
 import { worldMinute } from '@/lib/worldClock';
@@ -81,6 +82,7 @@ export class ShowcaseWorldSystem implements System {
   private skyDome: SkyDome | null = null;
   private cloudSea: CloudSea | null = null;
   private farMountains: FarMountainRanges | null = null;
+  private worldRegions: WorldRegions | null = null;
   private discoveryTracker: DiscoveryTracker | null = null;
   private expansionInspector: WorldExpansionInspector | null = null;
   private readonly weatherController = new WeatherController();
@@ -109,6 +111,8 @@ export class ShowcaseWorldSystem implements System {
   private inputManager: InputManager | null = null;
   private cameraRig: CameraRig | null = null;
   private interactables: InteractablesSystem | null = null;
+  private npcDialogueCloseHandler: (() => void) | null = null;
+  private regionTravelHandler: ((event: Event) => void) | null = null;
   private actorsLineup: ActorsLineup | null = null;
   readonly isActorsMode: boolean = false;
   playerForm: FormId = 0;
@@ -362,6 +366,8 @@ export class ShowcaseWorldSystem implements System {
 
     const islandKeys = ['A', 'B', 'C', 'S'] as const;
     const isPhone = ctx.device.deviceClass === 'phone';
+    this.worldRegions = new WorldRegions(isPhone);
+    this.worldGroup.add(this.worldRegions);
     for (const key of islandKeys) {
       const landform = new IslandLandformMesh(key, ctx.assets, {
         isPhone,
@@ -452,6 +458,22 @@ export class ShowcaseWorldSystem implements System {
     corvin.rotation.y = -Math.PI / 2;
     corvin.setAnimationState('idle');
 
+    // Three named women inhabit the new continents, each with a distinct form and palette.
+    const meilin = this.wandererPool.spawn('meilin', { resident: 'meilin', form: 2 });
+    meilin.position.set(2385, expandedRegionHeightAt(2385, -3575) ?? 72, -3575);
+    meilin.rotation.y = Math.PI * 0.72;
+    meilin.setAnimationState('idle');
+
+    const yue = this.wandererPool.spawn('yue', { resident: 'yue', form: 1 });
+    yue.position.set(-4940, expandedRegionHeightAt(-4940, -2390) ?? 48, -2390);
+    yue.rotation.y = -Math.PI / 2;
+    yue.setAnimationState('idle');
+
+    const sylva = this.wandererPool.spawn('sylva', { resident: 'sylva', form: 0 });
+    sylva.position.set(-1775, expandedRegionHeightAt(-1775, 4260) ?? 60, 4260);
+    sylva.rotation.y = Math.PI;
+    sylva.setAnimationState('idle');
+
     // Local Player Character (at saved position if available, else SPAWN 0, 0, 14)
     const savedChar = useGameStore.getState().character;
     const initialPos = savedChar?.pos
@@ -527,6 +549,95 @@ export class ShowcaseWorldSystem implements System {
         // Bell feedback
       },
     });
+
+    if (typeof window !== 'undefined') {
+      this.regionTravelHandler = (event: Event) => {
+        const detail = (event as CustomEvent<{ regionId?: string }>).detail;
+        if (!this.playerController) return;
+        if (detail?.regionId === 'home-reach') {
+          this.playerController.teleport(0, heightAt(0, 14) ?? 0, 14, Math.PI);
+          this.localPlayer?.setAnimationState('idle', 0.2);
+          ctx.events.emit('toast', { message: 'Returned to Home Reach' });
+          return;
+        }
+        const destination = EXPANDED_REGIONS.find((region) => region.id === detail?.regionId);
+        if (!destination) return;
+        const x = destination.center.x - 115;
+        const z = destination.center.z + 125;
+        const y = expandedRegionHeightAt(x, z) ?? destination.baseY;
+        this.playerController.teleport(x, y, z, 0);
+        this.localPlayer?.setAnimationState('idle', 0.2);
+        ctx.events.emit('toast', { message: 'Arrived in ' + destination.name });
+      };
+      window.addEventListener('arkvoid:travel-region', this.regionTravelHandler);
+      this.npcDialogueCloseHandler = () => {
+        this.playerController?.unlock('npc-dialogue');
+        this.playerController?.setState('idle');
+      };
+      window.addEventListener('arkvoid:npc-close', this.npcDialogueCloseHandler);
+    }
+
+    // Three distinct world gates connect Home Reach to three fully walkable continents.
+    for (const gate of HOME_REGION_GATES) {
+      const destination = EXPANDED_REGIONS.find((region) => region.id === gate.regionId);
+      if (!destination) continue;
+      this.interactables.register({
+        id: gate.id,
+        kind: 'gate',
+        position: new THREE.Vector3(gate.position.x, gate.position.y, gate.position.z),
+        radius: 5.4,
+        label: destination.name,
+        verb: 'Enter',
+        enabled: () => !this.playerController!.isLocked(),
+        onInteract: () => {
+          const x = destination.center.x - 115;
+          const z = destination.center.z + 125;
+          const y = expandedRegionHeightAt(x, z) ?? destination.baseY;
+          this.playerController!.teleport(x, y, z, 0);
+          this.localPlayer?.setAnimationState('idle', 0.2);
+          ctx.events.emit('toast', { message: 'Arrived in ' + destination.name });
+        },
+      });
+      this.interactables.register({
+        id: 'return-' + gate.id,
+        kind: 'gate',
+        position: new THREE.Vector3(destination.center.x - 90, expandedRegionHeightAt(destination.center.x - 90, destination.center.z + 110) ?? destination.baseY, destination.center.z + 110),
+        radius: 8.5,
+        label: 'the Home Reach gate',
+        verb: 'Return to',
+        enabled: () => !this.playerController!.isLocked(),
+        onInteract: () => {
+          const homeY = heightAt(0, 14) ?? 0;
+          this.playerController!.teleport(0, homeY, 14, Math.PI);
+          this.localPlayer?.setAnimationState('idle', 0.2);
+          ctx.events.emit('toast', { message: 'Returned to Home Reach' });
+        },
+      });
+    }
+
+    const residents = [
+      { id: 'meilin', name: 'Meilin', x: 2385, z: -3575 },
+      { id: 'yue', name: 'Yue', x: -4940, z: -2390 },
+      { id: 'sylva', name: 'Sylva', x: -1775, z: 4260 },
+    ] as const;
+    for (const resident of residents) {
+      this.interactables.register({
+        id: 'talk-' + resident.id,
+        kind: 'custom',
+        position: new THREE.Vector3(resident.x, expandedRegionHeightAt(resident.x, resident.z) ?? 0, resident.z),
+        radius: 3.6,
+        label: resident.name,
+        verb: 'Talk to',
+        enabled: () => !this.playerController!.isLocked(),
+        onInteract: () => {
+          this.playerController!.lock('npc-dialogue');
+          this.playerController!.setState('talk');
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('arkvoid:npc-talk', { detail: { npcId: resident.id } }));
+          }
+        },
+      });
+    }
 
     const swingingBell = this.sectArch?.group.getObjectByName('SwingingBell');
     if (swingingBell) {
@@ -701,7 +812,7 @@ export class ShowcaseWorldSystem implements System {
 
     // Update preview figure slow rotation (14s full turn) in awakening mode
     if (this.viewMode === 'awakening' && this.previewWanderer) {
-      this.previewWanderer.rotation.y += dt * (Math.PI * 2 / 14);
+      this.previewWanderer.rotation.y += dt * (Math.PI * 2 / 30);
       this.previewWanderer.update(dt, 0, this.wind?.uniforms.uWindDir.value, 0.05);
     }
 
@@ -778,13 +889,18 @@ export class ShowcaseWorldSystem implements System {
     const reduced = ctx.device.reducedMotion;
     const worldDay = Math.floor(worldMinute() / 1440);
     const weatherMinute = worldDay * 1440 + this.skyState.hour * 60;
-    const weather = this.weatherController.update('home-reach', weatherMinute, {
-      temperature: 0.55,
-      moisture: 0.64,
-      snowAllowed: false,
-    });
-    if (this.fog) this.fog.far = Math.max(150, 42000 / weather.fogMultiplier);
     const debugPosition = this.playerController?.position ?? ctx.camera.position;
+    const activeRegion = expandedRegionAt(debugPosition.x, debugPosition.z);
+    this.worldRegions?.setActiveRegion(activeRegion?.id ?? 'home-reach');
+    const climate = activeRegion?.id === 'veiled-peaks'
+      ? { temperature: 0.12, moisture: 0.84, snowAllowed: true }
+      : activeRegion?.id === 'capital-valley'
+        ? { temperature: 0.68, moisture: 0.76, snowAllowed: false }
+        : activeRegion?.id === 'primordial-forest'
+          ? { temperature: 0.46, moisture: 0.96, snowAllowed: false }
+          : { temperature: 0.55, moisture: 0.64, snowAllowed: false };
+    const weather = this.weatherController.update(activeRegion?.id ?? 'home-reach', weatherMinute, climate);
+    if (this.fog) this.fog.far = Math.max(150, 42000 / weather.fogMultiplier);
     this.expansionInspector?.update(
       debugPosition.x,
       debugPosition.y,
@@ -884,7 +1000,7 @@ export class ShowcaseWorldSystem implements System {
     }
 
     if (this.wandererPool) {
-      this.wandererPool.update(dt, ctx.camera.position, windVec, (x, z) => heightAt(x, z) ?? 0);
+      this.wandererPool.update(dt, ctx.camera.position, windVec, (x, z) => expandedRegionHeightAt(x, z) ?? heightAt(x, z) ?? 0);
     }
 
     if (this.actorsLineup) {
@@ -1075,7 +1191,7 @@ export class ShowcaseWorldSystem implements System {
     }
 
     const camY = ctx.camera.position.y;
-    const terrainY = heightAt(ctx.camera.position.x, ctx.camera.position.z, camY);
+    const terrainY = expandedRegionHeightAt(ctx.camera.position.x, ctx.camera.position.z) ?? heightAt(ctx.camera.position.x, ctx.camera.position.z, camY);
     if (terrainY !== null && camY < terrainY + 0.15) {
       this.walkTestPenetrationFrames++;
     }
@@ -1111,6 +1227,14 @@ export class ShowcaseWorldSystem implements System {
 
   dispose(): void {
     this.railController.stop();
+    if (this.npcDialogueCloseHandler && typeof window !== 'undefined') {
+      window.removeEventListener('arkvoid:npc-close', this.npcDialogueCloseHandler);
+      this.npcDialogueCloseHandler = null;
+    }
+    if (this.regionTravelHandler && typeof window !== 'undefined') {
+      window.removeEventListener('arkvoid:travel-region', this.regionTravelHandler);
+      this.regionTravelHandler = null;
+    }
     if (this.unsubCommand) {
       this.unsubCommand();
       this.unsubCommand = null;

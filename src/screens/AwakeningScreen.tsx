@@ -369,8 +369,8 @@ export function AwakeningScreen({ onAwakenComplete, error }: AwakeningScreenProp
       className="pointer-events-none fixed inset-0 z-hud flex flex-col justify-end lg:justify-center lg:p-6 select-none"
     >
       {/* Desktop (>= 1024px): Floating panel on left, world preview on right */}
-      <div className="pointer-events-auto hidden lg:flex w-full max-w-md">
-        <div className="w-full rounded-panel border border-line bg-white/92 p-8 shadow-violet-layered backdrop-blur-md">
+      <div className="pointer-events-auto hidden w-full max-w-[27rem] lg:flex">
+        <div className="w-full rounded-[26px] border border-white/65 bg-[#F6F3EC]/86 p-7 shadow-[0_24px_90px_rgba(12,17,15,0.20)] backdrop-blur-2xl">
           {content}
         </div>
       </div>
