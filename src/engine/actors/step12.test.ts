@@ -106,6 +106,7 @@ test('Step 12: Named women residents have distinct long-hair and ornament meshes
     assert.ok(resident.getObjectByName('face_features'));
     assert.ok(resident.getObjectByName('resident_long_hair'));
     assert.ok(resident.getObjectByName('resident_hair_lock'));
+    assert.ok(resident.getObjectByName('resident_flowing_hair_strands'));
     assert.ok(resident.getObjectByName('resident_hair_ornament'));
     resident.dispose();
   }
