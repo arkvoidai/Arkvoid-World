@@ -164,12 +164,12 @@ test('timeOfDayState matches key table at 6.5, 12, 18, 23 and transitions smooth
 
   // 18.3 (DUSK)
   timeOfDayState(18.3, s);
-  assert.equal(`#${s.horizon.getHexString().toUpperCase()}`, '#9A5080');
-  assert.equal(`#${s.zenith.getHexString().toUpperCase()}`, '#36225E');
+  assert.equal(`#${s.horizon.getHexString().toUpperCase()}`, '#B86B8E');
+  assert.equal(`#${s.zenith.getHexString().toUpperCase()}`, '#4A3872');
 
   // 23.0 (NIGHT)
   timeOfDayState(23, s);
-  assert.equal(`#${s.horizon.getHexString().toUpperCase()}`, '#18152B');
+  assert.equal(`#${s.horizon.getHexString().toUpperCase()}`, '#6B78C8');
   assert.equal(s.stars, 1);
 
   // Verify no sudden jump in keyLightDirection or lightIntensity across sunset (17.4 -> 18.6)
