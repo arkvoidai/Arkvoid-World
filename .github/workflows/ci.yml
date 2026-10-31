@@ -42,8 +42,11 @@ jobs:
       - name: Check collision invariants
         run: bun run check:collision
 
+      - name: Build production bundle
+        run: bun run build
+
       - name: Check bundle budget
         run: bun run check:budget
 
-      - name: Build production bundle
-        run: bun run build
+      - name: Lighthouse mobile budgets (poster-first Gate)
+        run: bunx @lhci/cli autorun --config=.lighthouserc.json
