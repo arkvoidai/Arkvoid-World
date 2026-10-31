@@ -274,7 +274,7 @@ export class Engine {
     if (!this.initialized) {
       this.init();
     }
-    if (this.running) return this;
+    if (this.running || this.pauseReasons.size > 0) return this;
     this.running = true;
     this.lastTimestampMs = null;
 
