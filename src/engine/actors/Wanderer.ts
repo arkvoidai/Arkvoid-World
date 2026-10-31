@@ -1129,7 +1129,7 @@ export class Wanderer extends THREE.Group {
       this.hairMesh.removeFromParent();
     }
     this.robeGeometry.dispose();
-    // Fabric materials are shared and owned by WandererMaterials' cache.
-    // Disposing one wanderer must not invalidate materials on every other actor.
+    // The robe shader material is a per-instance clone; cached fabric/skin/hair materials stay shared.
+    this.robeMaterial.dispose();
   }
 }
