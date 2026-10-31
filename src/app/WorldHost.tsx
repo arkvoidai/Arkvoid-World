@@ -156,12 +156,13 @@ export default function WorldHost({
   const [awakeningError, setAwakeningError] = useState<string | null>(null);
   const [hallReached, setHallReached] = useState(false);
   const [sessionReady, setSessionReady] = useState(() => viewMode !== 'boot');
+  const viewModeRef = useRef(viewMode);
+  viewModeRef.current = viewMode;
   const worldReady = firstFrameReady && sessionReady;
 
   // Bootstrap session and route to gate, awakening, or arrival
   useEffect(() => {
     if (viewMode !== 'boot') {
-      setSessionReady(true);
       if (viewMode === 'gate' || viewMode === 'awakening') {
         sharedEngineBridge.enqueue({ type: 'setViewMode', mode: viewMode });
       }
@@ -613,7 +614,7 @@ export default function WorldHost({
       } else {
         idleTimer = window.setTimeout(() => { void startEngine().catch(() => undefined); }, 1200);
       }
-    } else if (viewMode === 'awakening' || viewMode === 'arrival' || viewMode === 'world') {
+    } else if (viewModeRef.current === 'awakening' || viewModeRef.current === 'arrival' || viewModeRef.current === 'world') {
       void startEngine().catch(() => undefined);
     }
 
@@ -653,7 +654,7 @@ export default function WorldHost({
       window.removeEventListener('pagehide', cleanupEngine);
       cleanupEngine();
     };
-  }, [actors, audit, benchmark, form, leaning, leakTest, probe, reviewShots, syncVignetteOverlay]);
+  }, [actors, audit, benchmark, form, leaning, leakTest, probe, reviewShots, syncVignetteOverlay, viewModeRef]);
 
   // A saved character can enter Arrival directly after asynchronous bootstrap;
   // low-tier devices must start the runtime here rather than waiting for a Gate button.
