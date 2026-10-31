@@ -193,7 +193,7 @@ export const ISLANDS: Record<IslandKey, IslandDef> = {
     id: 'dawn-terrace',
     name: 'Dawn Terrace',
     center: { x: 0, y: 0, z: 0 },
-    radius: 26,
+    radius: 38,
     topY: 0,
     reachable: true,
     seed: 104729,
@@ -308,8 +308,9 @@ function buildArchedBridge(
 }
 
 export const BRIDGES: readonly BridgeDef[] = [
-  // Bridge A -> B: span ~17.5 m, elevation drop 2 m, gentle arch 0.78 m -> max slope ~14.4 deg (< 17 deg)
-  buildArchedBridge('bridge-ab', 'A', 'B', 2.0, 2.0, 0.78, 24),
+  // The larger island keeps its bridge landing safely inside the walkable rim.
+  // A restrained 0.20 m arch preserves the 2 m elevation transition below the 17 degree limit.
+  buildArchedBridge('bridge-ab', 'A', 'B', 8.0, 2.0, 0.20, 32),
   // Bridge B -> C: span ~16.5 m, elevation rise 3 m, gentle arch 0.48 m -> max slope ~15.4 deg (< 17 deg)
   buildArchedBridge('bridge-bc', 'B', 'C', 2.6, 2.4, 0.48, 24),
 ];

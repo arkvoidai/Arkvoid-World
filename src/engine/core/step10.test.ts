@@ -13,6 +13,7 @@ import {
   ARRIVAL_RAIL,
   ORBIT_RAIL,
   BRIDGE_CROSS_RAIL,
+  WORLD_REVEAL_RAIL,
 } from '@/engine/core/CameraRail';
 import { BenchmarkSession, BENCHMARK_RAIL } from '@/engine/core/Benchmark';
 import { QualityGovernor } from '@/engine/core/QualityGovernor';
@@ -153,6 +154,27 @@ test('Camera rails: evaluation, progression, loop, and completion', () => {
   assert.equal(doneFired, true);
   assert.ok(Math.abs(camera.position.y - 2.4) < 0.1);
   assert.equal(camera.fov, 48);
+});
+
+test('World reveal rail holds on a region before making deliberate cinematic cuts', () => {
+  assert.equal(WORLD_REVEAL_RAIL.duration, 32);
+  const controller = new CameraRailController();
+  const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.1, 1000);
+  controller.play(WORLD_REVEAL_RAIL, { loop: true, handheldDrift: false });
+
+  controller.evaluateAt(7.5, camera);
+  const homeShot = camera.position.clone();
+  controller.evaluateAt(7.99, camera);
+  assert.ok(camera.position.distanceTo(homeShot) < 0.001, 'camera should hold before the first regional cut');
+
+  controller.evaluateAt(8, camera);
+  assert.ok(camera.position.x > 1500, 'the cut should reveal Veiled Peaks at its own world coordinates');
+  controller.evaluateAt(11, camera);
+  assert.ok(camera.position.x > 1500 && camera.position.x < 3200, 'the regional shot should glide locally after the cut');
+
+  controller.evaluateAt(16, camera);
+  assert.ok(camera.position.x < -4000, 'the next editorial cut should reveal Capital Valley');
+  controller.stop();
 });
 
 test('Benchmark session: frame time metrics and PASS/FAIL budget verification', () => {

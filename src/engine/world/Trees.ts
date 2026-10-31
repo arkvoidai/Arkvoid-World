@@ -1192,7 +1192,7 @@ export class TreeSystem extends THREE.Group {
     }
 
     const targets: Record<IslandKey, number> = {
-      A: this.isPhone ? 34 : 56,
+      A: this.isPhone ? 42 : 72,
       B: this.isPhone ? 20 : 32,
       C: this.isPhone ? 20 : 32,
       S: 0,

@@ -35,7 +35,7 @@ export class WandererPool {
         wanderer,
         active: true,
         distanceToCamera: 0,
-        lod: 'near',
+        lod: wanderer.getLOD(),
         targetPos: new THREE.Vector3(),
         targetSpeed: 0,
       };
@@ -90,13 +90,21 @@ export class WandererPool {
     let nearCount = 0;
     for (const e of activeEntries) {
       const dist = e.distanceToCamera;
-      if (dist < 14 && nearCount < this.maxNear) {
-        e.lod = 'near';
+      const nearThreshold = e.lod === 'near' ? 15.5 : 13.0;
+      const midThreshold = e.lod === 'far' ? 38.0 : 42.0;
+      let nextLod: PoolWandererEntry['lod'];
+      if (dist < nearThreshold && nearCount < this.maxNear) {
+        nextLod = 'near';
         nearCount++;
-      } else if (dist < 40) {
-        e.lod = 'mid';
+      } else if (dist < midThreshold) {
+        nextLod = 'mid';
       } else {
-        e.lod = 'far';
+        nextLod = 'far';
+      }
+
+      if (nextLod !== e.lod) {
+        e.lod = nextLod;
+        e.wanderer.setLOD(nextLod);
       }
 
       // Hide if beyond 90m

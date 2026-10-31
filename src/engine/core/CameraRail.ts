@@ -8,6 +8,8 @@ export interface CameraRailKeyframe {
   readonly fov: number;
   readonly time: number; // seconds from rail start
   readonly ease?: RailEase;
+  /** Hold the previous shot until this keyframe, then cut cleanly to this location. */
+  readonly cutBefore?: boolean;
 }
 
 export interface CameraRailDef {
@@ -156,10 +158,30 @@ export const BRIDGE_CROSS_RAIL: CameraRailDef = {
   ],
 };
 
+// A quiet, premium world reveal: four distinct landscapes, framed as deliberate cinematic shots.
+// Each region is activated as its shot enters view; long-distance jumps are editorial cuts, not teleport flights.
+export const WORLD_REVEAL_RAIL: CameraRailDef = {
+  id: 'world-reveal',
+  name: 'The World Unfolds',
+  duration: 32,
+  keyframes: [
+    { time: 0, position: [-54, 88, 78], lookAt: [3, 4, -8], fov: 60, ease: 'easeInOut' },
+    { time: 6.5, position: [54, 54, 70], lookAt: [8, 3, -9], fov: 56, ease: 'easeInOut' },
+    { time: 8, position: [1980, 412, -3120], lookAt: [2530, 150, -3700], fov: 58, cutBefore: true },
+    { time: 14.5, position: [2800, 340, -3350], lookAt: [2490, 135, -3660], fov: 54, ease: 'easeInOut' },
+    { time: 16, position: [-4560, 428, -1950], lookAt: [-4930, 105, -2450], fov: 58, cutBefore: true },
+    { time: 22.5, position: [-5420, 350, -2050], lookAt: [-4980, 90, -2400], fov: 54, ease: 'easeInOut' },
+    { time: 24, position: [-2280, 472, 4680], lookAt: [-1780, 145, 4200], fov: 58, cutBefore: true },
+    { time: 30, position: [-1340, 365, 4500], lookAt: [-1790, 120, 4210], fov: 54, ease: 'easeInOut' },
+    { time: 32, position: [-54, 88, 78], lookAt: [3, 4, -8], fov: 60, cutBefore: true },
+  ],
+};
+
 export const BUILT_IN_RAILS: Record<string, CameraRailDef> = {
   arrival: ARRIVAL_RAIL,
   orbit: ORBIT_RAIL,
   'bridge-cross': BRIDGE_CROSS_RAIL,
+  'world-reveal': WORLD_REVEAL_RAIL,
 };
 
 export class CameraRailController {
@@ -282,7 +304,7 @@ export class CameraRailController {
     // Find keyframe interval [i, i+1]
     let idx = 0;
     for (let i = 0; i < kfs.length - 1; i++) {
-      if (time >= kfs[i]!.time && time <= kfs[i + 1]!.time) {
+      if (time >= kfs[i]!.time && time < kfs[i + 1]!.time) {
         idx = i;
         break;
       }
@@ -292,7 +314,7 @@ export class CameraRailController {
     const kfB = kfs[idx + 1]!;
     const segDuration = Math.max(0.0001, kfB.time - kfA.time);
     const rawT = (time - kfA.time) / segDuration;
-    const easedT = applyEase(rawT, kfA.ease);
+    const easedT = kfB.cutBefore ? 0 : applyEase(rawT, kfA.ease);
 
     this.posStart.set(kfA.position[0], kfA.position[1], kfA.position[2]);
     this.posEnd.set(kfB.position[0], kfB.position[1], kfB.position[2]);

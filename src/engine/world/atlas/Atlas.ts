@@ -35,7 +35,7 @@ export interface Region {
 }
 
 const homeAreas: readonly Area[] = [
-  { id: 'dawn-terrace', regionId: 'home-reach', name: 'Dawn Terrace', shape: { type: 'circle', center: { x: 0, z: 0 }, radius: 34 }, spawn: { x: 0, y: 0, z: 0 }, discoverable: true },
+  { id: 'dawn-terrace', regionId: 'home-reach', name: 'Dawn Terrace', shape: { type: 'circle', center: { x: 0, z: 0 }, radius: 35 }, spawn: { x: 0, y: 0, z: 0 }, discoverable: true },
   { id: 'still-garden', regionId: 'home-reach', name: 'Still Garden', shape: { type: 'circle', center: { x: 60, z: -8 }, radius: 29 }, spawn: { x: 60, y: -2, z: -8 }, discoverable: true },
   { id: 'falls-of-light', regionId: 'home-reach', name: 'Falls of Light', shape: { type: 'circle', center: { x: 38, z: -52 }, radius: 26 }, spawn: { x: 38, y: 1, z: -52 }, discoverable: true },
   { id: 'sanctuary', regionId: 'home-reach', name: 'Sanctuary', shape: { type: 'circle', center: { x: -10, z: -120 }, radius: 34 }, spawn: { x: -10, y: 12, z: -120 }, discoverable: false },
@@ -62,7 +62,7 @@ export const WORLD_ATLAS: readonly Region[] = [
     { temperature: 0.55, moisture: 0.64, roughness: 0.25, treeDensity: 0.42 },
     'floating-island-chain', ['main-sect', 'archive-pavilion', 'falls-shrine'],
     ['main-hall', 'spirit-pond', 'bell-tower', 'falls-edge'], homeAreas,
-    ['bridge-ab', 'bridge-bc', 'sanctuary-skyway', 'gate-veiled-peaks', 'gate-capital-valley', 'gate-primordial-forest', 'gate-astral-reach', 'gate-deep-sanctuary'],
+    ['bridge-ab', 'bridge-bc', 'sanctuary-skyway', 'atlas-veiled-peaks', 'atlas-capital-valley', 'atlas-primordial-forest', 'atlas-astral-reach', 'atlas-deep-sanctuary'],
     'home-reach-wind-water-birds'),
   makeRegion('veiled-peaks', 'Veiled Peaks', 'mountain-range', 'built',
     { x: 2400, y: 0, z: -3600 }, { x: 1800, z: 1800 }, { min: 0, max: 300 },
@@ -73,7 +73,7 @@ export const WORLD_ATLAS: readonly Region[] = [
       { id: 'cloud-ring-monastery', regionId: 'veiled-peaks', name: 'Cloud-Ring Monastery', shape: { type: 'circle', center: { x: 2520, z: -3680 }, radius: 190 }, spawn: { x: 2520, y: 75, z: -3680 }, discoverable: true },
       { id: 'silver-falls', regionId: 'veiled-peaks', name: 'Silver Falls', shape: { type: 'circle', center: { x: 2690, z: -3340 }, radius: 160 }, spawn: { x: 2690, y: 76, z: -3340 }, discoverable: true },
       { id: 'three-crowned-overlook', regionId: 'veiled-peaks', name: 'Three-Crowned Overlook', shape: { type: 'circle', center: { x: 2110, z: -3800 }, radius: 175 }, spawn: { x: 2110, y: 70, z: -3800 }, discoverable: true },
-    ], ['gate-veiled-peaks'], 'high-altitude-wind-bells'),
+    ], ['atlas-veiled-peaks'], 'high-altitude-wind-bells'),
   makeRegion('capital-valley', 'Capital Valley', 'river-valley', 'built',
     { x: -5000, y: 0, z: -2400 }, { x: 1900, z: 1900 }, { min: 0, max: 100 },
     { temperature: 0.62, moisture: 0.82, roughness: 0.22, treeDensity: 0.32 },
@@ -83,7 +83,7 @@ export const WORLD_ATLAS: readonly Region[] = [
       { id: 'imperial-plaza', regionId: 'capital-valley', name: 'Imperial Plaza', shape: { type: 'circle', center: { x: -4890, z: -2490 }, radius: 220 }, spawn: { x: -4890, y: 48, z: -2490 }, discoverable: true },
       { id: 'riverfront-quarter', regionId: 'capital-valley', name: 'Riverfront Quarter', shape: { type: 'circle', center: { x: -5220, z: -2240 }, radius: 180 }, spawn: { x: -5220, y: 47, z: -2240 }, discoverable: true },
       { id: 'nine-arch-bridge', regionId: 'capital-valley', name: 'Nine-Arch Bridge', shape: { type: 'circle', center: { x: -4680, z: -2160 }, radius: 160 }, spawn: { x: -4680, y: 49, z: -2160 }, discoverable: true },
-    ], ['gate-capital-valley'], 'river-market-bells'),
+    ], ['atlas-capital-valley'], 'river-market-bells'),
   makeRegion('primordial-forest', 'Primordial Forest', 'primordial-forest', 'built',
     { x: -1800, y: 0, z: 4200 }, { x: 1900, z: 1900 }, { min: 0, max: 120 },
     { temperature: 0.48, moisture: 0.96, roughness: 0.58, treeDensity: 0.98 },
@@ -92,15 +92,15 @@ export const WORLD_ATLAS: readonly Region[] = [
       { id: 'world-tree-sanctum', regionId: 'primordial-forest', name: 'World Tree Sanctum', shape: { type: 'circle', center: { x: -1800, z: 4200 }, radius: 200 }, spawn: { x: -1800, y: 60, z: 4200 }, discoverable: true },
       { id: 'moonfall-cascade', regionId: 'primordial-forest', name: 'Moonfall Cascade', shape: { type: 'circle', center: { x: -1590, z: 4360 }, radius: 155 }, spawn: { x: -1590, y: 48, z: 4360 }, discoverable: true },
       { id: 'root-sanctuary', regionId: 'primordial-forest', name: 'Root Sanctuary', shape: { type: 'circle', center: { x: -2050, z: 4020 }, radius: 170 }, spawn: { x: -2050, y: 50, z: 4020 }, discoverable: true },
-    ], ['gate-primordial-forest'], 'forest-insects-deep-water'),
+    ], ['atlas-primordial-forest'], 'forest-insects-deep-water'),
   makeRegion('astral-reach', 'Astral Reach', 'astral', 'planned',
     { x: 0, y: 6000, z: -9000 }, { x: 8000, z: 8000 }, { min: 4000, max: 7000 },
     { temperature: -0.42, moisture: 0.12, roughness: 0.72, treeDensity: 0.02 },
-    'celestial-fracture', ['astral-observatory'], ['starfall-archive', 'ringed-world'], [], ['gate-astral-reach'], 'aurora-cosmic-resonance', { realm: 4 }),
+    'celestial-fracture', ['astral-observatory'], ['starfall-archive', 'ringed-world'], [], ['atlas-astral-reach'], 'aurora-cosmic-resonance', { realm: 4 }),
   makeRegion('deep-sanctuary', 'Deep Sanctuary', 'underground', 'planned',
     { x: 4000, y: -900, z: 3000 }, { x: 3000, z: 3000 }, { min: -1500, max: -300 },
     { temperature: 0.72, moisture: 0.94, roughness: 0.86, treeDensity: 0 },
-    'karst-cavern-network', ['subterranean-sanctum'], ['dragon-vault', 'underground-sea'], [], ['gate-deep-sanctuary'], 'cavern-drips-stone-resonance', { realm: 3 }),
+    'karst-cavern-network', ['subterranean-sanctum'], ['dragon-vault', 'underground-sea'], [], ['atlas-deep-sanctuary'], 'cavern-drips-stone-resonance', { realm: 3 }),
 ];
 
 export const BUILT_REGIONS = WORLD_ATLAS.filter((region) => region.status === 'built');

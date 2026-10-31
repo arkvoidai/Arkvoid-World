@@ -6,7 +6,7 @@ import { sharedEngineBridge } from '@/state/worldBridgeStore';
 
 export interface Interactable {
   id: string;
-  kind: 'bell' | 'sit' | 'gate' | 'custom';
+  kind: 'bell' | 'sit' | 'custom';
   position: THREE.Vector3;
   radius: number;
   label: string;
@@ -131,23 +131,6 @@ export class InteractablesSystem {
       },
     });
 
-    // 3. "Pass through the gate" at the sealed gate
-    const gateSpot = SPOTS.gate.position;
-    this.register({
-      id: 'spot-gate',
-      kind: 'gate',
-      position: new THREE.Vector3(gateSpot.x, gateSpot.y, gateSpot.z),
-      radius: 3.2,
-      label: 'the gate',
-      verb: 'Pass through',
-      enabled: () => !this.isSeated,
-      onInteract: () => {
-        if (this.cameraRig) {
-          this.cameraRig.pitch -= 0.05;
-        }
-        this.options.onToast?.('The path ahead is sealed.');
-      },
-    });
   }
 
   private sitAt(pos: THREE.Vector3, facing: number): void {

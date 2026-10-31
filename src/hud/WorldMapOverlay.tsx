@@ -75,7 +75,7 @@ export default function WorldMapOverlay({
       <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 sm:grid-cols-[0.9fr_1.1fr] sm:gap-5 sm:p-6">
         <div className="flex min-h-[240px] flex-col rounded-[22px] bg-[#e9e8df] p-4 sm:min-h-[430px]">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#7b7d71]">World routes</span>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#7b7d71]">Continents</span>
             <span className="rounded-full border border-[#c9c9bd] px-2 py-1 text-[9px] uppercase tracking-widest text-[#73766b]">Illustrative</span>
           </div>
           <svg viewBox="0 0 360 360" role="img" aria-label="Schematic map showing Home Reach connected to three distant continents" className="my-auto w-full">
@@ -105,7 +105,7 @@ export default function WorldMapOverlay({
               <circle cx="84" cy="126" r="4"/><circle cx="180" cy="74" r="4"/><circle cx="278" cy="126" r="4"/>
             </g>
           </svg>
-          <p className="mt-2 text-[10px] leading-relaxed text-[#77796f]">The gates are real in-world portals. The map is a navigation overview, not a scale-accurate survey.</p>
+          <p className="mt-2 text-[10px] leading-relaxed text-[#77796f]">Choose a destination here to travel directly. You never need to find an in-world gate or portal.</p>
         </div>
 
         <div className="flex min-h-0 flex-col gap-3">
@@ -137,7 +137,7 @@ export default function WorldMapOverlay({
                     onClick={() => onTravel(region.id)}
                     className="shrink-0 rounded-full bg-[#283d34] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-white transition hover:bg-[#3d5b4b] disabled:cursor-default disabled:bg-[#d6d8d0] disabled:text-[#72776d]"
                   >
-                    {isCurrent ? 'Current region' : 'Travel'}
+                    {isCurrent ? 'Current region' : 'Explore'}
                   </button>
                 </div>
               </article>

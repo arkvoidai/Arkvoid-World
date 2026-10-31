@@ -24,7 +24,7 @@ import { LifeSystem } from '@/engine/fx/Life';
 import { REVIEW_SHOTS } from '@/engine/world/reviewShots';
 import { SkyDome } from '@/engine/world/SkyDome';
 import { FarMountainRanges } from '@/engine/world/FarMountainRanges';
-import { WorldRegions, EXPANDED_REGIONS, HOME_REGION_GATES, expandedRegionAt, expandedRegionHeightAt } from '@/engine/world/WorldRegions';
+import { WorldRegions, EXPANDED_REGIONS, expandedRegionAt, expandedRegionHeightAt } from '@/engine/world/WorldRegions';
 import { DiscoveryTracker, discoverableAreaAt } from '@/engine/world/atlas';
 import { WeatherController } from '@/engine/world/sky/Weather';
 import { worldMinute } from '@/lib/worldClock';
@@ -290,7 +290,7 @@ export class ShowcaseWorldSystem implements System {
       }
     }
 
-    // Dev preview query: ?rail=arrival|orbit|bridge-cross or ?bench=1
+    // Dev preview query: ?rail=arrival|orbit|bridge-cross|world-reveal or ?bench=1
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const railParam = params.get('rail');
@@ -366,7 +366,7 @@ export class ShowcaseWorldSystem implements System {
 
     const islandKeys = ['A', 'B', 'C', 'S'] as const;
     const isPhone = ctx.device.deviceClass === 'phone';
-    this.worldRegions = new WorldRegions(isPhone);
+    this.worldRegions = new WorldRegions(isPhone, ctx.assets);
     this.worldGroup.add(this.worldRegions);
     for (const key of islandKeys) {
       const landform = new IslandLandformMesh(key, ctx.assets, {
@@ -577,43 +577,7 @@ export class ShowcaseWorldSystem implements System {
       window.addEventListener('arkvoid:npc-close', this.npcDialogueCloseHandler);
     }
 
-    // Three distinct world gates connect Home Reach to three fully walkable continents.
-    for (const gate of HOME_REGION_GATES) {
-      const destination = EXPANDED_REGIONS.find((region) => region.id === gate.regionId);
-      if (!destination) continue;
-      this.interactables.register({
-        id: gate.id,
-        kind: 'gate',
-        position: new THREE.Vector3(gate.position.x, gate.position.y, gate.position.z),
-        radius: 5.4,
-        label: destination.name,
-        verb: 'Enter',
-        enabled: () => !this.playerController!.isLocked(),
-        onInteract: () => {
-          const x = destination.center.x - 115;
-          const z = destination.center.z + 125;
-          const y = expandedRegionHeightAt(x, z) ?? destination.baseY;
-          this.playerController!.teleport(x, y, z, 0);
-          this.localPlayer?.setAnimationState('idle', 0.2);
-          ctx.events.emit('toast', { message: 'Arrived in ' + destination.name });
-        },
-      });
-      this.interactables.register({
-        id: 'return-' + gate.id,
-        kind: 'gate',
-        position: new THREE.Vector3(destination.center.x - 90, expandedRegionHeightAt(destination.center.x - 90, destination.center.z + 110) ?? destination.baseY, destination.center.z + 110),
-        radius: 8.5,
-        label: 'the Home Reach gate',
-        verb: 'Return to',
-        enabled: () => !this.playerController!.isLocked(),
-        onInteract: () => {
-          const homeY = heightAt(0, 14) ?? 0;
-          this.playerController!.teleport(0, homeY, 14, Math.PI);
-          this.localPlayer?.setAnimationState('idle', 0.2);
-          ctx.events.emit('toast', { message: 'Returned to Home Reach' });
-        },
-      });
-    }
+    // Region selection is handled by the Atlas; there are no physical portal requirements.
 
     const residents = [
       { id: 'meilin', name: 'Meilin', x: 2385, z: -3575 },
@@ -696,7 +660,22 @@ export class ShowcaseWorldSystem implements System {
           this.inputManager?.setLocked(true);
         } else if (cmd.mode === 'world') {
           if (this.previewWanderer) this.previewWanderer.visible = false;
-          this.hasStartedLocomotion = true;
+          if (
+            !this.railController.isPlaying() &&
+            !this.isActorsMode &&
+            !this.isWalkTest &&
+            this.reviewShotIndex === null &&
+            !ctx.device.reducedMotion
+          ) {
+            // Direct entry uses the same reveal as the normal arrival flow.
+            this.hasStartedLocomotion = false;
+            this.railController.play(BUILT_IN_RAILS['world-reveal']!, {
+              loop: true,
+              handheldDrift: false,
+            });
+          } else {
+            this.hasStartedLocomotion = true;
+          }
           this.inputManager?.setLocked(false);
         }
       } else if (cmd.type === 'setPreviewFigure') {
@@ -726,20 +705,26 @@ export class ShowcaseWorldSystem implements System {
           duration: dur,
           onDone: () => {
             this.viewMode = 'world';
-            this.hasStartedLocomotion = true;
+            if (!ctx.device.reducedMotion && !this.isActorsMode) {
+              // The world opens only after the existing Gate → Awakening → Arrival flow completes.
+              this.hasStartedLocomotion = false;
+              this.railController.play(BUILT_IN_RAILS['world-reveal']!, {
+                loop: true,
+                handheldDrift: false,
+              });
+            } else {
+              this.hasStartedLocomotion = true;
+              this.cameraRig?.startHandoffFromShowcase(ctx.camera.position, this.activeLookTarget);
+            }
             this.inputManager?.setLocked(false);
-            this.cameraRig?.startHandoffFromShowcase(ctx.camera.position, this.activeLookTarget);
             cmd.onDone?.();
           },
         });
       } else if (cmd.type === 'skipArrivalRail') {
         if (this.railController.isPlaying() && !this.arrivalShortened) {
           this.arrivalShortened = true;
+          // skipToEnd invokes the Arrival onDone callback, which starts the world reveal. 
           this.railController.skipToEnd(ctx.camera);
-          this.viewMode = 'world';
-          this.hasStartedLocomotion = true;
-          this.inputManager?.setLocked(false);
-          this.cameraRig?.startHandoffFromShowcase(ctx.camera.position, this.activeLookTarget);
         }
       }
     });
@@ -868,6 +853,17 @@ export class ShowcaseWorldSystem implements System {
       input.interact;
 
     if (
+      this.railController.isPlaying() &&
+      hasInput &&
+      this.viewMode === 'world' &&
+      !this.isWalkTest
+    ) {
+      this.railController.stop();
+      this.hasStartedLocomotion = true;
+      this.cameraRig?.startHandoffFromShowcase(ctx.camera.position, this.activeLookTarget);
+    }
+
+    if (
       !this.hasStartedLocomotion &&
       hasInput &&
       this.reviewShotIndex === null &&
@@ -890,7 +886,10 @@ export class ShowcaseWorldSystem implements System {
     const worldDay = Math.floor(worldMinute() / 1440);
     const weatherMinute = worldDay * 1440 + this.skyState.hour * 60;
     const debugPosition = this.playerController?.position ?? ctx.camera.position;
-    const activeRegion = expandedRegionAt(debugPosition.x, debugPosition.z);
+    const cinematicPosition = this.railController.isPlaying() && !this.hasStartedLocomotion
+      ? ctx.camera.position
+      : debugPosition;
+    const activeRegion = expandedRegionAt(cinematicPosition.x, cinematicPosition.z);
     this.worldRegions?.setActiveRegion(activeRegion?.id ?? 'home-reach');
     const climate = activeRegion?.id === 'veiled-peaks'
       ? { temperature: 0.12, moisture: 0.84, snowAllowed: true }
@@ -935,6 +934,7 @@ export class ShowcaseWorldSystem implements System {
     this.farMountains?.update(elapsed);
     this.materialBank?.update(this.skyState, elapsed, reduced, force);
     this.materialBank?.updateTextures(ctx.assets);
+    this.worldRegions?.updateTextures(ctx.assets);
     this.materialLibrary?.update();
     this.sectArch?.update(elapsed, this.skyState);
     this.atmosphere?.update(
@@ -1068,6 +1068,9 @@ export class ShowcaseWorldSystem implements System {
   private updateShowcaseCamera(dt: number, ctx: EngineContext): void {
     if (this.railController.isPlaying()) {
       this.railController.update(dt, ctx.camera);
+      // Preserve the actual rail look direction for a clean handoff to player follow-camera.
+      ctx.camera.getWorldDirection(this.activeLookTarget);
+      this.activeLookTarget.multiplyScalar(80).add(ctx.camera.position);
       return;
     }
 
