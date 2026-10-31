@@ -1,8 +1,6 @@
 import { Component, Suspense, lazy, useState, type ErrorInfo, type ReactNode } from 'react';
 import { getMissingPublicConfig } from '@/config/public';
-import { SetupScreen } from '@/screens/SetupScreen';
 import { WorldLoadingScreen } from '@/ui/WorldLoadingScreen';
-import { AccountSheet } from '@/ui/AccountSheet';
 import { Logo } from '@/ui/Logo';
 import { useAuthStore } from '@/state/auth';
 import { reportClientError } from '@/net/clientTelemetry';
@@ -32,6 +30,8 @@ function lazyWithRetry<P extends object>(
 }
 
 const WorldHost = lazyWithRetry(() => import('@/app/WorldHost'));
+const SetupScreen = lazy(() => import('@/screens/SetupScreen').then((module) => ({ default: module.SetupScreen })));
+const AccountSheet = lazy(() => import('@/ui/AccountSheet').then((module) => ({ default: module.AccountSheet })));
 
 const DesignKitScreen =
   import.meta.env.DEV || import.meta.env.VITE_ENABLE_KIT === '1'
@@ -116,7 +116,11 @@ export default function App() {
     Boolean(params?.get('setup') === '1') &&
     getMissingPublicConfig().length > 0;
   if (showSetup) {
-    return <SetupScreen />;
+    return (
+      <Suspense fallback={<PearlBootScreen />}>
+        <SetupScreen />
+      </Suspense>
+    );
   }
 
   const debug = Boolean(params?.get('debug') === '1');
@@ -145,10 +149,14 @@ export default function App() {
           form={form}
           leaning={leaning}
         />
-        <AccountSheet
-          open={accountOpen || Boolean(sessionFailedMessage)}
-          onClose={() => setAccountOpen(false)}
-        />
+        {(accountOpen || Boolean(sessionFailedMessage)) && (
+          <Suspense fallback={null}>
+            <AccountSheet
+              open={accountOpen || Boolean(sessionFailedMessage)}
+              onClose={() => setAccountOpen(false)}
+            />
+          </Suspense>
+        )}
       </Suspense>
     </ErrorBoundary>
   );
