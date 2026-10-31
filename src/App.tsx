@@ -5,6 +5,7 @@ import { WorldLoadingScreen } from '@/ui/WorldLoadingScreen';
 import { AccountSheet } from '@/ui/AccountSheet';
 import { Logo } from '@/ui/Logo';
 import { useAuthStore } from '@/state/auth';
+import { reportClientError } from '@/net/clientTelemetry';
 
 // Resilient dynamic import that retries on transient network or dev server rebuild glitches
 function lazyWithRetry<P extends object>(
@@ -56,7 +57,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   override componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    console.error('Arkvoid uncaught error:', error, errorInfo);
+    reportClientError('react-boundary', error, { componentStack: errorInfo.componentStack ?? '' });
   }
 
   handleReload = (): void => {
