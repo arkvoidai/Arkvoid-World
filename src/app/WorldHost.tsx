@@ -578,7 +578,14 @@ export default function WorldHost({
           }
         } catch (error) {
           reportClientError('world-runtime', error);
-          if (!cancelled) setAwakeningError('The world could not open. Please try again.');
+          if (!cancelled) {
+            const detail = error instanceof Error ? error.message.toLowerCase() : '';
+            setAwakeningError(
+              detail.includes('webgl') || detail.includes('context')
+                ? '3D graphics are unavailable on this device. You can still return to the Gate.'
+                : 'The world could not open just now. Please try again.',
+            );
+          }
           throw error;
         }
       })();
@@ -716,6 +723,16 @@ export default function WorldHost({
         <Suspense fallback={null}>
           <ArrivalOverlay onSkip={handleSkipArrival} />
         </Suspense>
+      )}
+
+      {awakeningError && viewMode !== 'gate' && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none fixed bottom-[calc(env(safe-area-inset-bottom)+12px)] left-1/2 z-system max-w-[calc(100vw-32px)] -translate-x-1/2 rounded-full border border-white/70 bg-[#fbfaf7]/92 px-3 py-2 text-center text-[11px] text-[#514d45] shadow-sm backdrop-blur"
+        >
+          {awakeningError}
+        </div>
       )}
 
       {/* Step 15 First-Run Guidance: Glowing guide wisp toward hall stair */}
