@@ -61,6 +61,11 @@ export function reportClientError(kind: string, value: unknown, context?: Record
   while (errorTimes.length && now - errorTimes[0]! > 60_000) errorTimes.shift();
   const message = safeMessage(value);
   const key = `${kind.slice(0, 32)}:${message}`;
+  if (seenErrors.size > 256) {
+    for (const [seenKey, timestamp] of seenErrors) {
+      if (now - timestamp > DEDUPE_WINDOW_MS) seenErrors.delete(seenKey);
+    }
+  }
   const lastSeen = seenErrors.get(key);
   if (lastSeen !== undefined && now - lastSeen < DEDUPE_WINDOW_MS) return;
   if (errorTimes.length >= ERROR_LIMIT_PER_MINUTE) return;
@@ -100,7 +105,7 @@ function installVitals(): void {
   let cls = 0;
   const observers: PerformanceObserver[] = [];
 
-  const observe = (type: string, callback: (entries: PerformanceEntry[]) => void, options: PerformanceObserverInit): void => {
+  const observe = (callback: (entries: PerformanceEntry[]) => void, options: PerformanceObserverInit): void => {
     try {
       const observer = new PerformanceObserver((list) => callback(list.getEntries()));
       observer.observe(options);
@@ -110,11 +115,11 @@ function installVitals(): void {
     }
   };
 
-  observe('largest-contentful-paint', (entries) => {
+  observe((entries) => {
     for (const entry of entries) lcp = entry.startTime;
   }, { type: 'largest-contentful-paint', buffered: true });
 
-  observe('event', (entries) => {
+  observe((entries) => {
     for (const entry of entries) {
       const event = entry as PerformanceEntry & { interactionId?: number };
       if (event.interactionId && event.interactionId > 0) {
@@ -123,7 +128,7 @@ function installVitals(): void {
     }
   }, { type: 'event', buffered: true, durationThreshold: 40 });
 
-  observe('layout-shift', (entries) => {
+  observe((entries) => {
     for (const entry of entries) {
       const shift = entry as PerformanceEntry & { value?: number; hadRecentInput?: boolean };
       if (shift.hadRecentInput || typeof shift.value !== 'number') continue;
@@ -157,11 +162,17 @@ function installVitals(): void {
     if (productionSample && !import.meta.env.DEV) {
       const client = getSupabaseSafe();
       if (client) {
-        void client.rpc('log_client_error', {
-          p_kind: 'vital',
-          p_message: 'Web Vitals sample',
-          p_ctx: values,
-        }).then(() => undefined).catch(() => undefined);
+        void (async () => {
+          try {
+            await client.rpc('log_client_error', {
+              p_kind: 'vital',
+              p_message: 'Web Vitals sample',
+              p_ctx: values,
+            });
+          } catch {
+            // Performance reporting is best-effort.
+          }
+        })();
       }
     }
     for (const observer of observers) observer.disconnect();
