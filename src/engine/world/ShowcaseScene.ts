@@ -314,6 +314,7 @@ export class ShowcaseWorldSystem implements System {
       this.reviewShotIndex === null &&
       !this.isActorsMode &&
       !this.isWalkTest &&
+      !ctx.device.reducedMotion &&
       this.benchmarkSession === null
     ) {
       this.railController.play(BUILT_IN_RAILS['world-reveal']!, {
@@ -1062,6 +1063,9 @@ export class ShowcaseWorldSystem implements System {
   private updateShowcaseCamera(dt: number, ctx: EngineContext): void {
     if (this.railController.isPlaying()) {
       this.railController.update(dt, ctx.camera);
+      // Preserve the actual rail look direction for a clean handoff to player follow-camera.
+      ctx.camera.getWorldDirection(this.activeLookTarget);
+      this.activeLookTarget.multiplyScalar(80).add(ctx.camera.position);
       return;
     }
 
