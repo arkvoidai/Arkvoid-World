@@ -308,8 +308,9 @@ function buildArchedBridge(
 }
 
 export const BRIDGES: readonly BridgeDef[] = [
-  // Bridge A -> B: span ~17.5 m, elevation drop 2 m, gentle arch 0.78 m -> max slope ~14.4 deg (< 17 deg)
-  buildArchedBridge('bridge-ab', 'A', 'B', 2.0, 2.0, 0.78, 24),
+  // Larger Dawn Terrace moves the A-side bridge landing inward to preserve a safe ~11 m span.
+  // The 2 m elevation change and 0.78 m arch remain below the 17 degree walkability limit.
+  buildArchedBridge('bridge-ab', 'A', 'B', 8.0, 2.0, 0.78, 32),
   // Bridge B -> C: span ~16.5 m, elevation rise 3 m, gentle arch 0.48 m -> max slope ~15.4 deg (< 17 deg)
   buildArchedBridge('bridge-bc', 'B', 'C', 2.6, 2.4, 0.48, 24),
 ];
