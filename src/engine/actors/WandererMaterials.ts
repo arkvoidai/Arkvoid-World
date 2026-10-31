@@ -307,10 +307,14 @@ export class WandererMaterials {
   getSkinMaterial(): THREE.MeshStandardMaterial {
     let mat = this.accessoryMaterials.get('skin') as THREE.MeshStandardMaterial;
     if (!mat) {
-      mat = new THREE.MeshStandardMaterial({
+      mat = new THREE.MeshPhysicalMaterial({
         color: new THREE.Color('#C98F79'),
-        roughness: 0.72,
+        roughness: 0.64,
         metalness: 0,
+        clearcoat: 0.08,
+        clearcoatRoughness: 0.72,
+        sheen: 0.08,
+        sheenRoughness: 0.82,
       });
       this.accessoryMaterials.set('skin', mat);
     }
@@ -337,10 +341,12 @@ export class WandererMaterials {
     const key = 'hair:' + color;
     let mat = this.accessoryMaterials.get(key) as THREE.MeshStandardMaterial;
     if (!mat) {
-      mat = new THREE.MeshStandardMaterial({
+      mat = new THREE.MeshPhysicalMaterial({
         color: new THREE.Color(color),
-        roughness: 0.68,
+        roughness: 0.52,
         metalness: 0,
+        clearcoat: 0.16,
+        clearcoatRoughness: 0.5,
         side: THREE.DoubleSide,
       });
       this.accessoryMaterials.set(key, mat);
