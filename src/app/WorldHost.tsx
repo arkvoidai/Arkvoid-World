@@ -30,6 +30,7 @@ import { useGameStore } from '@/state/game';
 import { bootstrapSession } from '@/app/bootstrap';
 import { resolvePostBootstrapMode, shouldCreateGuestSession } from '@/app/entryFlow';
 import type { Leaning } from '@/net/api';
+import { reportClientError } from '@/net/clientTelemetry';
 
 const VisualReviewOverlay =
   import.meta.env.DEV || import.meta.env.VITE_ENABLE_REVIEW === '1'
@@ -574,7 +575,7 @@ export default function WorldHost({
             void resolveDeviceProfile();
           }
         } catch (error) {
-          console.error('[Arkvoid] World runtime failed to load.', error);
+          reportClientError('world-runtime', error);
           if (!cancelled) setAwakeningError('The world could not open. Please try again.');
           throw error;
         }
