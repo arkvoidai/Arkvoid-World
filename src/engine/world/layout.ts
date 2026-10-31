@@ -6,6 +6,7 @@ export type ReachableAreaId =
 export type IslandKey = 'A' | 'B' | 'C' | 'S';
 
 export type SpotId =
+  | 'gate'
   | 'breath-pool'
   | 'pavilion'
   | 'bell'
@@ -320,6 +321,12 @@ export const SPAWN = {
 } as const;
 
 export const SPOTS: Record<SpotId, SpotDef> = {
+  gate: {
+    id: 'gate',
+    island: 'A',
+    areaId: 'dawn-terrace',
+    position: { x: 0, y: 0, z: -21 },
+  },
   'breath-pool': {
     id: 'breath-pool',
     island: 'A',
