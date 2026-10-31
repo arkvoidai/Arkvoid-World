@@ -108,7 +108,9 @@ html,
 body,
 #root {
   width: 100%;
+  height: var(--arkvoid-visual-height, 100dvh);
   min-height: 100dvh;
+  overflow-x: clip;
   margin: 0;
   padding: 0;
   background-color: #fbfaf7;
