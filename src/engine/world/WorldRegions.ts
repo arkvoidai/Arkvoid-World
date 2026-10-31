@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { AssetStore } from '@/engine/core/AssetStore';
 
 export type ExpandedRegionId = 'veiled-peaks' | 'capital-valley' | 'primordial-forest';
 
@@ -108,9 +109,12 @@ function createTerrain(region: ExpandedRegionDefinition, phone: boolean): THREE.
 
 function addInstancedForest(group: THREE.Group, region: ExpandedRegionDefinition, phone: boolean): void {
   const random = seeded(region.id.length * 1931);
-  const count = phone ? 72 : 150;
+  const count = phone
+    ? region.id === 'primordial-forest' ? 132 : region.id === 'capital-valley' ? 96 : 64
+    : region.id === 'primordial-forest' ? 260 : region.id === 'capital-valley' ? 190 : 128;
   const trunkGeometry = new THREE.CylinderGeometry(0.35, 0.62, 8, 7);
-  const crownGeometry = new THREE.ConeGeometry(4.2, 11, 7);
+  // Rounded, irregular crowns read as clustered foliage rather than repeated game-like cones.
+  const crownGeometry = new THREE.IcosahedronGeometry(4.2, 1);
   const trunkMaterial = new THREE.MeshStandardMaterial({ color: region.id === 'primordial-forest' ? '#594735' : '#6D5944', roughness: 0.94 });
   const crownMaterial = new THREE.MeshStandardMaterial({ color: region.palette.foliage, roughness: 0.9 });
   const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, count);
@@ -242,68 +246,36 @@ function addForestLandmarks(group: THREE.Group, region: ExpandedRegionDefinition
 }
 
 
-export const HOME_REGION_GATES = [
-  { id: 'gate-veiled-peaks', regionId: 'veiled-peaks' as const, position: { x: -10, y: 0.2, z: -22 }, label: 'Veiled Peaks' },
-  { id: 'gate-capital-valley', regionId: 'capital-valley' as const, position: { x: 0, y: 0.2, z: -27 }, label: 'Capital Valley' },
-  { id: 'gate-primordial-forest', regionId: 'primordial-forest' as const, position: { x: 10, y: 0.2, z: -22 }, label: 'Primordial Forest' },
-] as const;
-
-function addPortalArch(group: THREE.Group, x: number, y: number, z: number, tint: string, scale = 1): void {
-  const stone = new THREE.MeshStandardMaterial({ color: '#8B8172', roughness: 0.84 });
-  const glow = new THREE.MeshBasicMaterial({ color: tint, transparent: true, opacity: 0.82, side: THREE.DoubleSide });
-  for (const side of [-1, 1]) {
-    const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.72 * scale, 6.2 * scale, 0.82 * scale), stone);
-    pillar.position.set(x + side * 3.2 * scale, y + 3.1 * scale, z);
-    pillar.castShadow = true;
-    group.add(pillar);
-    const capital = new THREE.Mesh(new THREE.BoxGeometry(1.1 * scale, 0.45 * scale, 1.15 * scale), stone);
-    capital.position.set(x + side * 3.2 * scale, y + 6.3 * scale, z);
-    group.add(capital);
-  }
-  const arch = new THREE.Mesh(new THREE.TorusGeometry(3.2 * scale, 0.2 * scale, 10, 48, Math.PI), stone);
-  arch.position.set(x, y + 6.2 * scale, z);
-  group.add(arch);
-  const veil = new THREE.Mesh(new THREE.PlaneGeometry(5.9 * scale, 5.8 * scale), glow);
-  veil.position.set(x, y + 3.05 * scale, z + 0.08 * scale);
-  group.add(veil);
-  const step = new THREE.Mesh(new THREE.BoxGeometry(8.2 * scale, 0.24 * scale, 3.4 * scale), stone);
-  step.position.set(x, y + 0.12 * scale, z + 1.2 * scale);
-  group.add(step);
-}
-
 export class WorldRegions extends THREE.Group {
   private readonly materials: THREE.Material[] = [];
+  private readonly terrainMaterials = new Map<ExpandedRegionId, THREE.MeshStandardMaterial>();
   private readonly regionGroups = new Map<ExpandedRegionId, THREE.Group>();
-  constructor(phone = false) {
+
+  constructor(phone = false, assets?: AssetStore) {
     super();
     this.name = 'ArkvoidDistinctRegions';
-    const gateColours: Record<ExpandedRegionId, string> = {
-      'veiled-peaks': '#C5E7F1',
-      'capital-valley': '#E5B96D',
-      'primordial-forest': '#8EBE83',
-    };
-    for (const gate of HOME_REGION_GATES) {
-      const portal = new THREE.Group();
-      portal.name = 'HomeGate_' + gate.id;
-      addPortalArch(portal, gate.position.x, gate.position.y, gate.position.z, gateColours[gate.regionId], 0.82);
-      this.add(portal);
-    }
     for (const region of EXPANDED_REGIONS) {
       const area = new THREE.Group();
       area.name = 'Region_' + region.id;
-      const returnY = expandedRegionHeightAt(region.center.x - 90, region.center.z + 110) ?? region.baseY;
-      const returnPortal = new THREE.Group();
-      returnPortal.name = 'ReturnGate_' + region.id;
-      addPortalArch(returnPortal, region.center.x - 90, returnY, region.center.z + 110, '#E8D8B0', 1.05);
-      area.add(returnPortal);
       const geometry = createTerrain(region, phone);
+      const textureSlot = region.id === 'veiled-peaks'
+        ? 'rock'
+        : region.id === 'capital-valley'
+          ? 'grass'
+          : 'moss';
+      const maps = assets?.getSlot(textureSlot);
       const material = new THREE.MeshStandardMaterial({
         color: region.palette.ground,
-        roughness: region.id === 'capital-valley' ? 0.92 : 0.98,
+        map: maps?.diff ?? null,
+        normalMap: maps?.nor ?? null,
+        roughnessMap: maps?.arm ?? null,
+        roughness: region.id === 'capital-valley' ? 0.92 : 0.96,
         metalness: 0.02,
+        normalScale: new THREE.Vector2(0.48, 0.48),
         flatShading: false,
       });
       this.materials.push(material);
+      this.terrainMaterials.set(region.id, material);
       const ground = new THREE.Mesh(geometry, material);
       ground.name = 'WalkableTerrain_' + region.id;
       ground.receiveShadow = true;
@@ -317,6 +289,29 @@ export class WorldRegions extends THREE.Group {
       this.add(area);
     }
     this.setActiveRegion('home-reach');
+  }
+
+  updateTextures(assets: AssetStore): void {
+    for (const region of EXPANDED_REGIONS) {
+      const material = this.terrainMaterials.get(region.id);
+      if (!material) continue;
+      const slotId = region.id === 'veiled-peaks'
+        ? 'rock'
+        : region.id === 'capital-valley'
+          ? 'grass'
+          : 'moss';
+      const maps = assets.getSlot(slotId);
+      if (
+        material.map !== maps.diff ||
+        material.normalMap !== maps.nor ||
+        material.roughnessMap !== (maps.arm ?? null)
+      ) {
+        material.map = maps.diff;
+        material.normalMap = maps.nor;
+        material.roughnessMap = maps.arm ?? null;
+        material.needsUpdate = true;
+      }
+    }
   }
 
   setActiveRegion(regionId: ExpandedRegionId | 'home-reach'): void {
