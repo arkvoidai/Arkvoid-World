@@ -363,3 +363,5 @@
 - The `GEMINI_API_KEY` Supabase Function secret and an authenticated end-to-end NPC conversation have not been verified. The old `mistral-npc` function remains deployed until the new path is verified.
 - GitHub required-status-check protection on `main` has not been enabled by this branch. A repository administrator must mark the CI job required after confirming its check name.
 - There is no audio module in the current source tree; therefore no audio chunk was created.
+
+- First PR CI attempt reached TypeScript successfully, then exposed strict-lint findings in the existing WorldHost effect, PlayerController movement locals, one unused test import, and Gate error handling. Those findings were corrected in follow-up commits; the next full CI result is the source of truth for validation. Do not merge on the earlier failed/cancelled runs.
