@@ -349,3 +349,13 @@
 - The base head now has a tapered chin/cheek profile with subtle brows and more geometry than the previous low-resolution sphere. Skin/hair use a restrained physical clearcoat response. Long resident hair retains face-framing locks and combines six curved secondary strands into one mesh.
 - The visual work improves the existing procedural prototype but does not claim photoreal human rendering. Licensed authored/scan-based characters, groomed hair, facial rigs, motion capture/retargeting and tested LOD assets remain necessary for the final target.
 - The opening sanctuary gate coordinate remains as a camera/lighting anchor for the existing Gate → Awakening → Arrival introduction. It is not a world-travel interaction. Long-distance region travel remains direct from the Atlas.
+
+
+## Visual quality direction (planning only — not implementation complete)
+- Decision: balanced cross-device visual target; free assets only, with explicit commercial-use and web-redistribution rights.
+- Added `docs/VISUAL_QUALITY_PLAN.md` with repository findings, phased implementation, asset requirements, mobile guardrails and visual acceptance gates.
+- Updated `docs/CONSTITUTION.md` to replace the zero-downloaded-assets restriction with a hybrid procedural + approved production asset policy while preserving Three.js and analytic collision.
+- Updated `docs/ASSET_LICENSES.md` with per-asset provenance and licence verification requirements. Existing texture slots are candidate categories only; no exact downloaded asset is approved by the document alone.
+- Existing foundations confirmed in repository: `AssetStore`, `TextureCatalog`, PBR material systems, device profiles, quality presets and performance budget script. Production GLB model streaming/character asset pipeline is not yet verified as implemented.
+- Status: documentation and architecture decision only. No runtime assets, model loader, scene replacement, visual improvements, tests or deployment have been completed by this planning change.
+- Next gate: capture baseline screenshots and run build/typecheck/lint/tests/budget checks before implementation.
