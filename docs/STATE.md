@@ -340,3 +340,12 @@
 - Connected distant regional ground materials to the existing AssetStore PBR slots (rock, grass and moss), refreshed those textures as assets load, and replaced repeated cone-shaped tree crowns with rounded instanced crowns. Regional forest density varies by biome and phone/desktop tier.
 - Added curved hair-strand detail to Meilin, Yue and Sylva. The procedural Wanderer remains a stylised prototype and is not yet a photoreal production character; this requires authored, licensed, rigged 3D character assets and a validated animation/LOD pipeline.
 - These changes do not claim full open-world chunk streaming, worker-thread generation, volumetric clouds, terrain-carved rivers or device-verified frame budgets. Those remain future work and require profiling on representative phones and desktops.
+
+
+## Character LOD and resident visual pass (2026-10-31)
+
+- The actor pool now applies near/mid/far decisions to the actual Wanderer robe mesh. Near uses a 32 × 36 lathe grid and physical fabric; mid and far use progressively smaller grids and standard fabric. Distance thresholds have hysteresis to reduce LOD thrashing.
+- Form/leaning changes rebuild the per-instance robe material so the wind, hem-lag and breathing shader hooks remain attached. Per-instance robe materials are disposed during LOD swaps and actor disposal; shared cached fabrics remain owned by WandererMaterials.
+- The base head now has a tapered chin/cheek profile with subtle brows and more geometry than the previous low-resolution sphere. Skin/hair use a restrained physical clearcoat response. Long resident hair retains face-framing locks and combines six curved secondary strands into one mesh.
+- The visual work improves the existing procedural prototype but does not claim photoreal human rendering. Licensed authored/scan-based characters, groomed hair, facial rigs, motion capture/retargeting and tested LOD assets remain necessary for the final target.
+- The opening sanctuary gate coordinate remains as a camera/lighting anchor for the existing Gate → Awakening → Arrival introduction. It is not a world-travel interaction. Long-distance region travel remains direct from the Atlas.
