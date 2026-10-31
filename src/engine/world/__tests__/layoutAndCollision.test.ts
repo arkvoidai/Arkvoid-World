@@ -14,7 +14,7 @@ import {
 describe('World Layout & Analytic Collision', () => {
   it('defines deterministic islands A, B, C, and unreachable Sanctuary S', () => {
     assert.equal(WORLD.islands.A.id, 'dawn-terrace');
-    assert.equal(WORLD.islands.A.radius, 26);
+    assert.equal(WORLD.islands.A.radius, 38);
     assert.equal(WORLD.islands.B.id, 'still-garden');
     assert.equal(WORLD.islands.B.radius, 21);
     assert.equal(WORLD.islands.C.id, 'falls-of-light');
@@ -25,8 +25,8 @@ describe('World Layout & Analytic Collision', () => {
     // Superelliptic radial offset stays within ±0.8 m
     for (let i = 0; i < 64; i++) {
       const theta = (i / 64) * Math.PI * 2;
-      const rA = islandRadiusAtAngle('A', 26, theta);
-      assert.ok(rA >= 25.2 && rA <= 26.8);
+      const rA = islandRadiusAtAngle('A', 38, theta);
+      assert.ok(rA >= 37.2 && rA <= 38.8);
     }
   });
 
