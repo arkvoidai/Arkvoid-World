@@ -25,7 +25,7 @@ function makeMaterial(
   return material;
 }
 
-function buildPreviewScene(engine: BabylonEngine): Scene {
+function buildPreviewScene(engine: BabylonEngine, canvas: HTMLCanvasElement): Scene {
   const scene = new Scene(engine);
   scene.clearColor = new Color4(0.77, 0.83, 0.9, 1);
   scene.fogMode = Scene.FOGMODE_EXP2;
@@ -48,7 +48,7 @@ function buildPreviewScene(engine: BabylonEngine): Scene {
   camera.panningSensibility = 0;
   camera.wheelPrecision = 65;
   camera.pinchPrecision = 90;
-  camera.attachControl(engine.getRenderingCanvas(), true);
+  camera.attachControl(canvas, true);
 
   const ambient = new HemisphericLight(
     'arkvoid-sky-fill',
@@ -293,7 +293,7 @@ export default function BabylonWorldPreview() {
     let disposed = false;
 
     const render = () => {
-      if (!disposed && scene && !scene.isDisposed()) {
+      if (!disposed && scene && !scene.isDisposed) {
         scene.render();
       }
     };
@@ -309,7 +309,7 @@ export default function BabylonWorldPreview() {
       });
       const maxDpr = isTouchDevice ? 1.5 : 2;
       engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, maxDpr));
-      scene = buildPreviewScene(engine);
+      scene = buildPreviewScene(engine, canvas);
 
       if (typeof ResizeObserver !== 'undefined') {
         resizeObserver = new ResizeObserver(() => engine?.resize());
