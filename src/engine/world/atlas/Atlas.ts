@@ -35,7 +35,7 @@ export interface Region {
 }
 
 const homeAreas: readonly Area[] = [
-  { id: 'dawn-terrace', regionId: 'home-reach', name: 'Dawn Terrace', shape: { type: 'circle', center: { x: 0, z: 0 }, radius: 34 }, spawn: { x: 0, y: 0, z: 0 }, discoverable: true },
+  { id: 'dawn-terrace', regionId: 'home-reach', name: 'Dawn Terrace', shape: { type: 'circle', center: { x: 0, z: 0 }, radius: 35 }, spawn: { x: 0, y: 0, z: 0 }, discoverable: true },
   { id: 'still-garden', regionId: 'home-reach', name: 'Still Garden', shape: { type: 'circle', center: { x: 60, z: -8 }, radius: 29 }, spawn: { x: 60, y: -2, z: -8 }, discoverable: true },
   { id: 'falls-of-light', regionId: 'home-reach', name: 'Falls of Light', shape: { type: 'circle', center: { x: 38, z: -52 }, radius: 26 }, spawn: { x: 38, y: 1, z: -52 }, discoverable: true },
   { id: 'sanctuary', regionId: 'home-reach', name: 'Sanctuary', shape: { type: 'circle', center: { x: -10, z: -120 }, radius: 34 }, spawn: { x: -10, y: 12, z: -120 }, discoverable: false },
