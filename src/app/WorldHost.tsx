@@ -1,6 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { BenchmarkReport } from '@/engine/core/Benchmark';
-import BenchmarkOverlay from '@/hud/BenchmarkOverlay';
 import { DebugReadout } from '@/hud/DebugReadout';
 import {
   getImmediateDeviceProfile,
@@ -15,15 +14,10 @@ import { hourNow } from '@/lib/worldClock';
 import { sharedEngineBridge, useWorldBridgeStore } from '@/state/worldBridgeStore';
 import { WorldLoadingScreen } from '@/ui/WorldLoadingScreen';
 import { Pill } from '@/ui/Pill';
-import ActorsLineupOverlay from '@/hud/ActorsLineupOverlay';
-import NpcDialogueOverlay from '@/hud/NpcDialogueOverlay';
-import WorldMapOverlay, { type MapRegionId } from '@/hud/WorldMapOverlay';
 import type { FormId, LeaningId } from '@/engine/actors/WandererMaterials';
 import type { AnimationStateName } from '@/engine/actors/Animator';
+import type { MapRegionId } from '@/hud/WorldMapOverlay';
 
-import { GateOverlay } from '@/screens/GateOverlay';
-import { AwakeningScreen } from '@/screens/AwakeningScreen';
-import { ArrivalOverlay } from '@/screens/ArrivalOverlay';
 import { GuideWisp } from '@/hud/GuideWisp';
 import { useAuthStore } from '@/state/auth';
 import { useGameStore } from '@/state/game';
@@ -31,6 +25,14 @@ import { bootstrapSession } from '@/app/bootstrap';
 import { resolvePostBootstrapMode, shouldCreateGuestSession } from '@/app/entryFlow';
 import type { Leaning } from '@/net/api';
 import { reportClientError } from '@/net/clientTelemetry';
+
+const GateOverlay = lazy(() => import('@/screens/GateOverlay').then((module) => ({ default: module.GateOverlay })));
+const AwakeningScreen = lazy(() => import('@/screens/AwakeningScreen').then((module) => ({ default: module.AwakeningScreen })));
+const ArrivalOverlay = lazy(() => import('@/screens/ArrivalOverlay'));
+const BenchmarkOverlay = lazy(() => import('@/hud/BenchmarkOverlay'));
+const ActorsLineupOverlay = lazy(() => import('@/hud/ActorsLineupOverlay'));
+const NpcDialogueOverlay = lazy(() => import('@/hud/NpcDialogueOverlay'));
+const WorldMapOverlay = lazy(() => import('@/hud/WorldMapOverlay'));
 
 const VisualReviewOverlay =
   import.meta.env.DEV || import.meta.env.VITE_ENABLE_REVIEW === '1'
@@ -195,7 +197,7 @@ export default function WorldHost({
         setSessionReady(true);
       })
       .catch((err) => {
-        console.warn('Bootstrap error:', err);
+        reportClientError('bootstrap', err);
         if (!cancelled) {
           setViewMode('gate');
           sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'gate' });
@@ -303,7 +305,7 @@ export default function WorldHost({
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to open the world. Please try again.';
-      console.warn('[Arkvoid] Begin action error:', err);
+      reportClientError('begin', err);
       setAwakeningError(message);
       setViewMode('gate');
       sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'gate' });
@@ -642,6 +644,14 @@ export default function WorldHost({
     };
   }, [actors, audit, benchmark, form, leaning, leakTest, probe, reviewShots, syncVignetteOverlay]);
 
+  // A saved character can enter Arrival directly after asynchronous bootstrap;
+  // low-tier devices must start the runtime here rather than waiting for a Gate button.
+  useEffect(() => {
+    if (viewMode === 'awakening' || viewMode === 'arrival' || viewMode === 'world') {
+      void startEngineRef.current?.().catch(() => undefined);
+    }
+  }, [viewMode, sessionReady]);
+
   return (
     <main className="relative h-full w-full overflow-hidden bg-[#fbfaf7] select-none">
       <div
@@ -681,25 +691,31 @@ export default function WorldHost({
 
       {/* Step 15 Gate Overlay: Welcome over live showcase world */}
       {viewMode === 'gate' && sessionReady && (
-        <GateOverlay
-          onBegin={async () => { await startEngineRef.current?.(); await handleBegin(); }}
-          onAccountResolved={handleAccountResolved}
-          isLoading={isBeginning}
-          errorMessage={awakeningError}
-        />
+        <Suspense fallback={null}>
+          <GateOverlay
+            onBegin={async () => { await startEngineRef.current?.(); await handleBegin(); }}
+            onAccountResolved={handleAccountResolved}
+            isLoading={isBeginning}
+            errorMessage={awakeningError}
+          />
+        </Suspense>
       )}
 
       {/* Step 15 Awakening Screen: 3D character creation */}
       {viewMode === 'awakening' && worldReady && (
-        <AwakeningScreen
-          onAwakenComplete={handleAwakenComplete}
-          error={awakeningError}
-        />
+        <Suspense fallback={null}>
+          <AwakeningScreen
+            onAwakenComplete={handleAwakenComplete}
+            error={awakeningError}
+          />
+        </Suspense>
       )}
 
       {/* Step 15 Arrival Overlay: Camera rail arrival banner */}
       {viewMode === 'arrival' && (
-        <ArrivalOverlay onSkip={handleSkipArrival} />
+        <Suspense fallback={null}>
+          <ArrivalOverlay onSkip={handleSkipArrival} />
+        </Suspense>
       )}
 
       {/* Step 15 First-Run Guidance: Glowing guide wisp toward hall stair */}
@@ -711,13 +727,15 @@ export default function WorldHost({
       )}
 
       {activeNpcId && viewMode === 'world' && (
-        <NpcDialogueOverlay
-          npcId={activeNpcId}
-          onClose={() => {
-            window.dispatchEvent(new Event('arkvoid:npc-close'));
-            setActiveNpcId(null);
-          }}
-        />
+        <Suspense fallback={null}>
+          <NpcDialogueOverlay
+            npcId={activeNpcId}
+            onClose={() => {
+              window.dispatchEvent(new Event('arkvoid:npc-close'));
+              setActiveNpcId(null);
+            }}
+          />
+        </Suspense>
       )}
 
       {viewMode === 'world' && (
@@ -733,11 +751,13 @@ export default function WorldHost({
       )}
 
       {showWorldMap && viewMode === 'world' && (
-        <WorldMapOverlay
-          currentRegion={currentRegionId}
-          onClose={() => setShowWorldMap(false)}
-          onTravel={handleMapTravel}
-        />
+        <Suspense fallback={null}>
+          <WorldMapOverlay
+            currentRegion={currentRegionId}
+            onClose={() => setShowWorldMap(false)}
+            onTravel={handleMapTravel}
+          />
+        </Suspense>
       )}
 
       {/* Contextual Action Pill (world mode only) */}
@@ -756,10 +776,12 @@ export default function WorldHost({
 
       {/* Benchmark results overlay (?bench=1) */}
       {benchmarkReport && (
-        <BenchmarkOverlay
-          report={benchmarkReport}
-          onClose={() => setBenchmarkReport(null)}
-        />
+        <Suspense fallback={null}>
+          <BenchmarkOverlay
+            report={benchmarkReport}
+            onClose={() => setBenchmarkReport(null)}
+          />
+        </Suspense>
       )}
 
       {import.meta.env.DEV && (debug || probe || assets) ? (
@@ -777,11 +799,13 @@ export default function WorldHost({
       ) : null}
 
       {actors && (
-        <ActorsLineupOverlay
-          onCaptureFrame={handleCaptureFrame}
-          onSelectAnimation={handleSelectActorAnimation}
-          onToggleAutoCycle={handleToggleAutoCycle}
-        />
+        <Suspense fallback={null}>
+          <ActorsLineupOverlay
+            onCaptureFrame={handleCaptureFrame}
+            onSelectAnimation={handleSelectActorAnimation}
+            onToggleAutoCycle={handleToggleAutoCycle}
+          />
+        </Suspense>
       )}
 
       {reviewShots && VisualReviewOverlay ? (
