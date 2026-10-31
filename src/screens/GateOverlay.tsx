@@ -34,7 +34,7 @@ export function GateOverlay({
     setLocalError(null);
     try {
       await onBegin();
-    } catch (error) {
+    } catch {
       setLocalError('The world could not open just now. Please try again.');
     } finally {
       setClickPending(false);
