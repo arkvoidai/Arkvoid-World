@@ -56,7 +56,6 @@ export class Wanderer extends THREE.Group {
   readonly animator: WandererAnimator;
 
   private readonly materials: WandererMaterials;
-  private readonly config: WandererConfig;
   private currentLod: 'near' | 'mid' | 'far';
 
   // Visual Meshes
@@ -101,7 +100,6 @@ export class Wanderer extends THREE.Group {
   constructor(config: WandererConfig = {}) {
     super();
     this.name = 'Wanderer';
-    this.config = config;
     this.currentLod = config.lod ?? 'near';
     this.materials = WandererMaterials.get();
 
