@@ -305,8 +305,7 @@ export default function BabylonWorldPreview() {
         stencil: false,
         preserveDrawingBuffer: false,
         powerPreference: 'high-performance',
-        adaptToDeviceRatio: false,
-      });
+      }, false);
       const maxDpr = isTouchDevice ? 1.5 : 2;
       engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, maxDpr));
       scene = buildPreviewScene(engine, canvas);
