@@ -1,7 +1,7 @@
 import { BRIDGES, ISLANDS } from '@/engine/world/layout';
 import type { WorldPos } from './Coordinates';
 
-export type TravelEdgeType = 'bridge' | 'stair' | 'path' | 'gate' | 'skyway';
+export type TravelEdgeType = 'bridge' | 'stair' | 'path' | 'atlas' | 'skyway';
 export interface TravelEdge {
   id: string; from: string; to: string; type: TravelEdgeType;
   start: WorldPos; end: WorldPos; length: number; status: 'built' | 'planned';
@@ -21,11 +21,11 @@ export const TRAVEL_EDGES: readonly TravelEdge[] = [
   { ...makeEdge('bridge-ab', 'dawn-terrace', 'still-garden', 'bridge', ab.points[0]!, ab.points[ab.points.length - 1]!), length: ab.totalLengthXZ },
   { ...makeEdge('bridge-bc', 'still-garden', 'falls-of-light', 'bridge', bc.points[0]!, bc.points[bc.points.length - 1]!), length: bc.totalLengthXZ },
   makeEdge('sanctuary-skyway', 'falls-of-light', 'sanctuary', 'skyway', sanctuaryStart, sanctuaryEnd),
-  makeEdge('gate-veiled-peaks', 'dawn-terrace', 'veiled-peaks', 'gate', { x: -10, y: 0, z: -22 }, { x: 2400, y: 72, z: -3600 }),
-  makeEdge('gate-capital-valley', 'dawn-terrace', 'capital-valley', 'gate', { x: 0, y: 0, z: -27 }, { x: -5000, y: 48, z: -2400 }),
-  makeEdge('gate-primordial-forest', 'dawn-terrace', 'primordial-forest', 'gate', { x: 10, y: 0, z: -22 }, { x: -1800, y: 60, z: 4200 }),
-  makeEdge('gate-astral-reach', 'sanctuary', 'astral-reach', 'gate', sanctuaryEnd, { x: 0, y: 4000, z: -9000 }, 'planned'),
-  makeEdge('gate-deep-sanctuary', 'still-garden', 'deep-sanctuary', 'gate', { x: 60, y: -2, z: -8 }, { x: 4000, y: -300, z: 3000 }, 'planned'),
+  makeEdge('atlas-veiled-peaks', 'dawn-terrace', 'veiled-peaks', 'atlas', { x: 0, y: 0, z: 0 }, { x: 2400, y: 72, z: -3600 }),
+  makeEdge('atlas-capital-valley', 'dawn-terrace', 'capital-valley', 'atlas', { x: 0, y: 0, z: 0 }, { x: -5000, y: 48, z: -2400 }),
+  makeEdge('atlas-primordial-forest', 'dawn-terrace', 'primordial-forest', 'atlas', { x: 0, y: 0, z: 0 }, { x: -1800, y: 60, z: 4200 }),
+  makeEdge('atlas-astral-reach', 'sanctuary', 'astral-reach', 'atlas', sanctuaryEnd, { x: 0, y: 4000, z: -9000 }, 'planned'),
+  makeEdge('atlas-deep-sanctuary', 'still-garden', 'deep-sanctuary', 'atlas', { x: 60, y: -2, z: -8 }, { x: 4000, y: -300, z: 3000 }, 'planned'),
 ];
 
 export function walkTime(edge: TravelEdge, speedMetersPerSecond = 2.3): number {
@@ -91,7 +91,7 @@ export function nextWaypoint(position: WorldPos): TravelEdge | null {
   let best: TravelEdge | null = null;
   let bestDistance = Infinity;
   for (const edge of TRAVEL_EDGES) {
-    if (edge.status !== 'built' || (edge.type !== 'gate' && edge.type !== 'skyway')) continue;
+    if (edge.status !== 'built' || edge.type !== 'skyway') continue;
     const d = Math.hypot(position.x - edge.start.x, position.y - edge.start.y, position.z - edge.start.z);
     if (d < bestDistance) { bestDistance = d; best = edge; }
   }
