@@ -281,6 +281,47 @@ test('Right-stick movement at a fixed camera yaw follows a straight world-space 
   controller.dispose();
 });
 
+test('Camera view basis agrees with forward and right player movement', () => {
+  const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.1, 1000);
+  const rig = new CameraRig(camera, mockPhoneDevice);
+  const player = new THREE.Vector3(4, 0, 7);
+
+  rig.update(1 / 60, player, 0, 0, 0, 0, false);
+
+  assert.ok(camera.position.z > player.z, 'camera should sit behind a player facing -Z');
+  const viewDirection = new THREE.Vector3();
+  camera.getWorldDirection(viewDirection);
+  assert.ok(viewDirection.z < -0.9, 'camera should look in the same -Z direction as forward movement');
+
+  const screenRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+  assert.ok(screenRight.x > 0.9, 'screen-right should point toward world +X at yaw 0');
+  rig.dispose();
+});
+
+test('Forward, backward, left and right inputs map to their expected world axes', () => {
+  const cases = [
+    { name: 'forward', moveX: 0, moveY: 1, axis: 'z', sign: -1 },
+    { name: 'backward', moveX: 0, moveY: -1, axis: 'z', sign: 1 },
+    { name: 'left', moveX: -1, moveY: 0, axis: 'x', sign: -1 },
+    { name: 'right', moveX: 1, moveY: 0, axis: 'x', sign: 1 },
+  ] as const;
+
+  for (const direction of cases) {
+    const controller = new PlayerController();
+    const start = controller.position.clone();
+    const input: InputState = {
+      moveX: direction.moveX, moveY: direction.moveY,
+      lookDeltaYaw: 0, lookDeltaPitch: 0, run: false, interact: false, cancel: false,
+    };
+    for (let i = 0; i < 90; i++) controller.update(1 / 60, input, 0);
+    const delta = direction.axis === 'x'
+      ? controller.position.x - start.x
+      : controller.position.z - start.z;
+    assert.ok(direction.sign * delta > 1, direction.name + ' should move along its intended world axis');
+    controller.dispose();
+  }
+});
+
 test('Step 13: InteractablesSystem candidate scoring, bell ringing, and seated state', () => {
   const controller = new PlayerController();
   const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.1, 1000);
