@@ -196,6 +196,28 @@ test('Step 12: Forms and Resident Presets (Hale, Ione, Tamsin, Corvin)', () => {
   corvin.dispose();
 });
 
+test('Step 12: Wanderer applies progressively lighter near, mid and far robe geometry', () => {
+  const wanderer = new Wanderer({ form: 0, lod: 'near' });
+  const robe = () => wanderer.getObjectByName('wanderer_robe') as THREE.Mesh;
+  const nearVertices = (robe().geometry as THREE.BufferGeometry).getAttribute('position').count;
+
+  wanderer.setLOD('mid');
+  const midVertices = (robe().geometry as THREE.BufferGeometry).getAttribute('position').count;
+  assert.equal(wanderer.getLOD(), 'mid');
+  assert.ok(midVertices < nearVertices, 'mid LOD should rebuild a smaller robe mesh');
+
+  wanderer.setLOD('far');
+  const farVertices = (robe().geometry as THREE.BufferGeometry).getAttribute('position').count;
+  assert.equal(wanderer.getLOD(), 'far');
+  assert.ok(farVertices < midVertices, 'far LOD should use the smallest robe mesh');
+
+  wanderer.setLOD('near');
+  assert.equal(wanderer.getLOD(), 'near');
+  assert.ok((robe().geometry as THREE.BufferGeometry).getAttribute('position').count > farVertices);
+  assert.ok(wanderer.getObjectByName('face_eyes'), 'LOD changes must preserve the face');
+  wanderer.dispose();
+});
+
 test('Step 12: WandererPool LOD distance management and near caps', () => {
   const desktopPool = new WandererPool(mockDesktopDevice);
   const phonePool = new WandererPool(mockPhoneDevice);
@@ -208,8 +230,13 @@ test('Step 12: WandererPool LOD distance management and near caps', () => {
   }
 
   desktopPool.update(1 / 60, new THREE.Vector3(0, 0, 0));
-  // Desktop maxNear is 8 (remaining 2 drop to mid)
+  // Desktop maxNear is 8 (remaining 2 drop to mid).
   assert.equal(desktopPool.getNearCount(), 8, 'desktop pool caps near wanderers to 8');
+  assert.equal(desktopPool.get('actor_8')?.getLOD(), 'mid', 'pool must apply the mid mesh LOD');
+  const farActor = desktopPool.spawn('far_actor', { form: 0 });
+  farActor.position.set(0, 0, 50);
+  desktopPool.update(1 / 60, new THREE.Vector3(0, 0, 0));
+  assert.equal(farActor.getLOD(), 'far', 'pool must apply the far mesh LOD');
 
   // Spawn on phone pool
   for (let i = 0; i < 10; i++) {
@@ -217,8 +244,9 @@ test('Step 12: WandererPool LOD distance management and near caps', () => {
     w.position.set(0, 0, i * 1.0);
   }
   phonePool.update(1 / 60, new THREE.Vector3(0, 0, 0));
-  // Phone maxNear is 4 (remaining 6 drop to mid)
+  // Phone maxNear is 4 (remaining 6 drop to mid).
   assert.equal(phonePool.getNearCount(), 4, 'phone pool caps near wanderers to 4');
+  assert.equal(phonePool.get('phone_actor_4')?.getLOD(), 'mid', 'phone pool must apply mid LOD within its near cap');
 
   desktopPool.dispose();
   phonePool.dispose();
