@@ -58,3 +58,4 @@ jobs:
           name: lighthouse-poster-phase
           path: .lighthouseci/
           if-no-files-found: ignore
+          include-hidden-files: true
