@@ -50,3 +50,11 @@ jobs:
 
       - name: Lighthouse mobile budgets (poster-first Gate)
         run: bunx @lhci/cli autorun --config=.lighthouserc.json
+
+      - name: Upload Lighthouse reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-poster-phase
+          path: .lighthouseci/
+          if-no-files-found: ignore
