@@ -71,22 +71,28 @@
         const phase = hour >= 5 && hour < 8 ? 'dawn' : hour >= 8 && hour < 17 ? 'day' : hour >= 17 && hour < 20 ? 'dusk' : 'night';
         const orientation = matchMedia('(orientation: portrait)').matches ? 'portrait' : 'landscape';
         const href = '/posters/hero-' + phase + '-' + orientation + '.webp';
-        const preload = document.createElement('link');
-        preload.rel = 'preload';
-        preload.as = 'image';
-        preload.href = href;
-        document.head.appendChild(preload);
-        const poster = new Image();
-        poster.decoding = 'async';
-        poster.onload = () => {
-          document.documentElement.style.setProperty('--arkvoid-hero-poster', 'url("' + href + '")');
-          document.documentElement.dataset.heroPoster = 'ready';
-        };
-        poster.onerror = () => {
-          preload.remove();
-          document.documentElement.dataset.heroPoster = 'fallback';
-        };
-        poster.src = href;
+        fetch('/posters/manifest.json', { cache: 'no-cache' })
+          .then((response) => response.ok ? response.json() : null)
+          .then((manifest) => {
+            if (!manifest || !Array.isArray(manifest.posters) || !manifest.posters.includes(href)) return;
+            const preload = document.createElement('link');
+            preload.rel = 'preload';
+            preload.as = 'image';
+            preload.href = href;
+            document.head.appendChild(preload);
+            const poster = new Image();
+            poster.decoding = 'async';
+            poster.onload = () => {
+              document.documentElement.style.setProperty('--arkvoid-hero-poster', 'url("' + href + '")');
+              document.documentElement.dataset.heroPoster = 'ready';
+            };
+            poster.onerror = () => {
+              preload.remove();
+              document.documentElement.dataset.heroPoster = 'fallback';
+            };
+            poster.src = href;
+          })
+          .catch(() => { document.documentElement.dataset.heroPoster = 'fallback'; });
         document.addEventListener('DOMContentLoaded', () => {
           performance.mark?.('arkvoid:boot-ui-visible');
           document.documentElement.style.setProperty('--arkvoid-boot-start', String(startedAt));
@@ -148,6 +154,24 @@
         opacity: 0.78;
         user-select: none;
       }
+      #arkvoid-offline-status {
+        position: fixed;
+        z-index: 9999;
+        inset-inline: 16px;
+        bottom: max(12px, env(safe-area-inset-bottom));
+        width: fit-content;
+        max-width: calc(100vw - 32px);
+        margin-inline: auto;
+        padding: 7px 12px;
+        border: 1px solid rgba(23, 20, 31, 0.10);
+        border-radius: 999px;
+        background: rgba(251, 250, 247, 0.92);
+        color: rgba(23, 20, 31, 0.64);
+        font: 11px/1.35 system-ui, sans-serif;
+        text-align: center;
+        backdrop-filter: blur(12px);
+      }
+      #arkvoid-offline-status[hidden] { display: none !important; }
     </style>
   </head>
   <body>
@@ -156,6 +180,16 @@
         <span class="arkvoid-boot-wordmark">ARKVOID</span>
       </div>
     </div>
+    <div id="arkvoid-offline-status" role="status" aria-live="polite" hidden>Offline · Your world will reconnect when the network returns.</div>
+    <script>
+      (() => {
+        const status = document.getElementById('arkvoid-offline-status');
+        const update = () => { if (status) status.hidden = navigator.onLine; };
+        window.addEventListener('online', update, { passive: true });
+        window.addEventListener('offline', update, { passive: true });
+        update();
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
