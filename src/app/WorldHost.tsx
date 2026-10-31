@@ -614,8 +614,6 @@ export default function WorldHost({
       } else {
         idleTimer = window.setTimeout(() => { void startEngine().catch(() => undefined); }, 1200);
       }
-    } else if (viewModeRef.current === 'awakening' || viewModeRef.current === 'arrival' || viewModeRef.current === 'world') {
-      void startEngine().catch(() => undefined);
     }
 
     const cleanupEngine = () => {
