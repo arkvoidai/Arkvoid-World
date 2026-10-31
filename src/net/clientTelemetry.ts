@@ -15,6 +15,15 @@ export type WebVitalSnapshot = {
 declare global {
   interface Window {
     __ARKVOID_WEB_VITALS__?: WebVitalSnapshot;
+  __ARKVOID_PERF_AUDIT__?: {
+    marks: Record<string, number | null>;
+    longTaskCountAfterFirstFrame: number;
+    longTaskOver50MsAfterFirstFrame: number;
+    longTaskOver100MsAfterFirstFrame: number;
+    longestPostFrameTaskMs: number;
+    heapUsedBytesAfterFiveMinutes: number | null;
+    capturedAtMs: number;
+  };
   }
 }
 
@@ -81,6 +90,70 @@ export function reportClientError(kind: string, value: unknown, context?: Record
   if (flushTimer === null) {
     flushTimer = window.setTimeout(() => { void flushClientErrors(); }, 900);
   }
+}
+
+function installPerformanceAudit(): void {
+  let longTaskCountAfterFirstFrame = 0;
+  let longTaskOver50MsAfterFirstFrame = 0;
+  let longTaskOver100MsAfterFirstFrame = 0;
+  let longestPostFrameTaskMs = 0;
+
+  const firstFrameMark = () =>
+    performance.getEntriesByName('arkvoid:first-world-frame', 'mark')[0]?.startTime ?? null;
+
+  const capture = (heapUsedBytesAfterFiveMinutes: number | null) => {
+    const names = [
+      'arkvoid:navigation-start',
+      'arkvoid:first-paint',
+      'arkvoid:boot-ui-visible',
+      'arkvoid:react-mounted',
+      'arkvoid:engine-chunk-loaded',
+      'arkvoid:first-world-frame',
+      'arkvoid:interactive',
+    ];
+    const marks: Record<string, number | null> = {};
+    for (const name of names) {
+      marks[name] = performance.getEntriesByName(name, 'mark')[0]?.startTime ?? null;
+    }
+    window.__ARKVOID_PERF_AUDIT__ = {
+      marks,
+      longTaskCountAfterFirstFrame,
+      longTaskOver50MsAfterFirstFrame,
+      longTaskOver100MsAfterFirstFrame,
+      longestPostFrameTaskMs: Math.round(longestPostFrameTaskMs * 10) / 10,
+      heapUsedBytesAfterFiveMinutes,
+      capturedAtMs: Date.now(),
+    };
+  };
+
+  try {
+    if (PerformanceObserver.supportedEntryTypes?.includes('longtask')) {
+      const observer = new PerformanceObserver((list) => {
+        const firstFrameAt = firstFrameMark();
+        if (firstFrameAt === null) return;
+        for (const entry of list.getEntries()) {
+          if (entry.startTime < firstFrameAt) continue;
+          longTaskCountAfterFirstFrame += 1;
+          if (entry.duration > 50) longTaskOver50MsAfterFirstFrame += 1;
+          if (entry.duration > 100) longTaskOver100MsAfterFirstFrame += 1;
+          longestPostFrameTaskMs = Math.max(longestPostFrameTaskMs, entry.duration);
+        }
+      });
+      observer.observe({ type: 'longtask', buffered: true });
+    }
+  } catch {
+    // Long-task entries are not exposed in every browser.
+  }
+
+  if (import.meta.env.DEV) {
+    window.setTimeout(() => {
+      const memory = (performance as Performance & {
+        memory?: { usedJSHeapSize?: number };
+      }).memory;
+      capture(typeof memory?.usedJSHeapSize === 'number' ? memory.usedJSHeapSize : null);
+    }, 5 * 60 * 1000);
+  }
+  window.addEventListener('pagehide', () => capture(null), { once: true });
 }
 
 function installErrorListeners(): void {
@@ -188,4 +261,5 @@ export function installClientTelemetry(): void {
   installed = true;
   installErrorListeners();
   installVitals();
+  installPerformanceAudit();
 }
