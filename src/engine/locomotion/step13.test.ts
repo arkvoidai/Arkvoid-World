@@ -301,7 +301,8 @@ test('Camera view basis agrees with forward and right player movement', () => {
 test('Camera forward and screen-right remain aligned after a 90-degree orbit', () => {
   const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.1, 1000);
   const rig = new CameraRig(camera, mockPhoneDevice);
-  const player = new THREE.Vector3(4, 0, 7);
+  // Keep the arm clear of the raised hall terrace so this isolates orientation, not collision clamping.
+  const player = new THREE.Vector3(0, 0, 0);
   rig.yaw = Math.PI / 2;
   rig.update(1 / 60, player, 0, 0, 0, 0, true);
 
