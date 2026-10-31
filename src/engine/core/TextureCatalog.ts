@@ -111,6 +111,7 @@ export class TextureCatalog {
   readonly ignoredFiles: string[] = [];
   readonly assignments: Record<TextureSlotId, SlotAssignment>;
   readonly unusedSets: string[] = [];
+  readonly ready: Promise<void>;
 
   static getInstance(): TextureCatalog {
     if (!TextureCatalog.instance) {
@@ -130,24 +131,38 @@ export class TextureCatalog {
       };
     }
 
-    this.scanAndParse();
-    this.assignSetsToSlots();
+    this.ready = this.scanAndParse().then(() => {
+      this.assignSetsToSlots();
+    });
   }
 
-  private scanAndParse(): void {
-    // Eager Vite glob over all files in /src/assets/textures/
-    // Using import: "default" and query: "?url" to get the asset URL
-    let modules: Record<string, string>;
+  private async scanAndParse(): Promise<void> {
+    // Lazy Vite glob: each module resolves only a URL string (?url), never image bytes.
+    let modules: Record<string, () => Promise<string>>;
     try {
       modules = import.meta.glob(
         '/src/assets/textures/**/*',
-        { eager: true, query: '?url', import: 'default' },
-      ) as Record<string, string>;
+        { query: '?url', import: 'default' },
+      ) as Record<string, () => Promise<string>>;
     } catch {
       modules = {};
     }
 
-    for (const [filePath, url] of Object.entries(modules)) {
+    const discovered = await Promise.all(
+      Object.entries(modules).map(async ([filePath, loadUrl]) => {
+        try {
+          return [filePath, await loadUrl()] as const;
+        } catch {
+          return [filePath, null] as const;
+        }
+      }),
+    );
+
+    for (const [filePath, url] of discovered) {
+      if (!url) {
+        this.ignoredFiles.push(filePath.split('/').pop() ?? filePath);
+        continue;
+      }
       const slashIdx = filePath.lastIndexOf('/');
       const fileName = slashIdx >= 0 ? filePath.slice(slashIdx + 1) : filePath;
       const dotIdx = fileName.lastIndexOf('.');
