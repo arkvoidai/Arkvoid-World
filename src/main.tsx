@@ -1,9 +1,11 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from '@/App';
+import { installClientTelemetry } from '@/net/clientTelemetry';
 import '@/index.css';
 
 performance.mark?.('arkvoid:react-mounted');
+installClientTelemetry();
 
 const rootElement = document.getElementById('root');
 if (rootElement) {
