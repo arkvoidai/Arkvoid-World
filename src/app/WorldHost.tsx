@@ -157,7 +157,9 @@ export default function WorldHost({
   const [hallReached, setHallReached] = useState(false);
   const [sessionReady, setSessionReady] = useState(() => viewMode !== 'boot');
   const viewModeRef = useRef(viewMode);
-  viewModeRef.current = viewMode;
+  useEffect(() => {
+    viewModeRef.current = viewMode;
+  }, [viewMode]);
   const worldReady = firstFrameReady && sessionReady;
 
   // Bootstrap session and route to gate, awakening, or arrival
