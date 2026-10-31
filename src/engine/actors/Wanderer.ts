@@ -57,6 +57,7 @@ export class Wanderer extends THREE.Group {
 
   private readonly materials: WandererMaterials;
   private readonly config: WandererConfig;
+  private currentLod: 'near' | 'mid' | 'far';
 
   // Visual Meshes
   private robeMesh!: THREE.Mesh;
@@ -101,6 +102,7 @@ export class Wanderer extends THREE.Group {
     super();
     this.name = 'Wanderer';
     this.config = config;
+    this.currentLod = config.lod ?? 'near';
     this.materials = WandererMaterials.get();
 
     // Resolve form and leaning
@@ -336,11 +338,20 @@ export class Wanderer extends THREE.Group {
   }
 
   /**
-   * Continuous soft robe from shoulders to hem (lathe with 24 radial and 28 vertical segments).
+   * Shared fabric selection keeps visual quality consistent with the actor's current LOD.
+   */
+  private getFabricForCurrentLod(isTrim = false): THREE.MeshStandardMaterial {
+    return this.currentLod === 'near'
+      ? this.materials.getFabricMaterial(this.leaning, isTrim)
+      : this.materials.getMidFabricMaterial(this.leaning, isTrim);
+  }
+
+  /**
+   * Continuous robe silhouette. Near, mid and far meshes use progressively smaller lathe grids.
    */
   private buildRobeMesh(): void {
-    const radialSegs = this.config.lod === 'mid' ? 12 : 24;
-    const vertSegs = this.config.lod === 'mid' ? 14 : 28;
+    const radialSegs = this.currentLod === 'near' ? 32 : this.currentLod === 'mid' ? 18 : 10;
+    const vertSegs = this.currentLod === 'near' ? 36 : this.currentLod === 'mid' ? 20 : 12;
 
     // Build lathe points from shoulders (y=1.38) down to hem (y=0.06)
     // Hem radius is at least 0.36m, ensuring zero clipping through legs (capsules radius ~0.18m)
@@ -368,11 +379,7 @@ export class Wanderer extends THREE.Group {
     this.robeGeometry = new THREE.LatheGeometry(points, radialSegs);
 
     // Custom vertex deformation shader hook
-    const isNear = this.config.lod !== 'mid' && this.config.lod !== 'far';
-    const baseMat = isNear
-      ? this.materials.getFabricMaterial(this.leaning, false).clone()
-      : this.materials.getMidFabricMaterial(this.leaning, false).clone();
-
+    const baseMat = this.getFabricForCurrentLod(false).clone();
     baseMat.side = THREE.DoubleSide;
 
     // Inject custom robe deformation shader uniforms and vertex displacement
@@ -440,8 +447,8 @@ export class Wanderer extends THREE.Group {
    * Wide tapered sleeves with 3-segment spring chain.
    */
   private buildSleeves(): void {
-    const sleeveMat = this.materials.getFabricMaterial(this.leaning, false);
-    const trimMat = this.materials.getFabricMaterial(this.leaning, true);
+    const sleeveMat = this.getFabricForCurrentLod(false);
+    const trimMat = this.getFabricForCurrentLod(true);
 
     const createSleeveChain = (isLeft: boolean) => {
       const chainGroup = new THREE.Group();
@@ -497,7 +504,7 @@ export class Wanderer extends THREE.Group {
     this.sashGroup = new THREE.Group();
     this.sashGroup.name = 'wanderer_sash';
 
-    const trimMat = this.materials.getFabricMaterial(this.leaning, true);
+    const trimMat = this.getFabricForCurrentLod(true);
 
     // Belt band around waist (y=0.92)
     const beltGeo = new THREE.CylinderGeometry(0.20, 0.20, 0.08, 16, 1, true);
@@ -698,7 +705,7 @@ export class Wanderer extends THREE.Group {
         this.skeleton.head.add(this.hatMesh);
         // No full-face gauze curtain: the Traveller's expression remains visible.
         const cloakGeo = new THREE.ConeGeometry(0.34, 0.45, 16, 1, true);
-        const cloakMesh = new THREE.Mesh(cloakGeo, this.materials.getFabricMaterial(this.leaning, true));
+        const cloakMesh = new THREE.Mesh(cloakGeo, this.getFabricForCurrentLod(true));
         cloakMesh.position.y = -0.06;
         cloakMesh.scale.set(1.0, 1.0, 0.7);
         this.cloakMesh = cloakMesh;
@@ -707,7 +714,7 @@ export class Wanderer extends THREE.Group {
       }
 
       case 1: {
-        const fabricMat = this.materials.getFabricMaterial(this.leaning, false);
+        const fabricMat = this.getFabricForCurrentLod(false);
         const hoodGeo = new THREE.SphereGeometry(0.18, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.70);
         const hoodMesh = new THREE.Mesh(hoodGeo, fabricMat);
         hoodMesh.position.set(0, 0.055, -0.095);
@@ -724,7 +731,7 @@ export class Wanderer extends THREE.Group {
       }
 
       case 2: {
-        const trimMat = this.materials.getFabricMaterial(this.leaning, true);
+        const trimMat = this.getFabricForCurrentLod(true);
         const mantleGeo = new THREE.CylinderGeometry(0.24, 0.36, 0.25, 16, 1, true);
         this.mantleMesh = new THREE.Mesh(mantleGeo, trimMat);
         this.mantleMesh.position.y = 0.08;
@@ -742,7 +749,7 @@ export class Wanderer extends THREE.Group {
       }
 
       case 3: {
-        const trimMat = this.materials.getFabricMaterial(this.leaning, true);
+        const trimMat = this.getFabricForCurrentLod(true);
         const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.12, 16, 1, true), trimMat);
         collar.position.y = 0.08;
         this.collarMesh = collar;
@@ -981,6 +988,22 @@ export class Wanderer extends THREE.Group {
     this.animator.speechLevel = THREE.MathUtils.clamp(level, 0, 1);
   }
 
+  /** Change render detail only when the pool crosses an LOD boundary. */
+  setLOD(lod: 'near' | 'mid' | 'far'): void {
+    if (this.currentLod === lod) return;
+    this.currentLod = lod;
+    if (this.robeMesh) {
+      this.robeMesh.removeFromParent();
+      this.robeGeometry.dispose();
+      this.robeMaterial.dispose();
+      this.buildRobeMesh();
+    }
+  }
+
+  getLOD(): 'near' | 'mid' | 'far' {
+    return this.currentLod;
+  }
+
   setFormAndLeaning(form: FormId, leaning: LeaningId): void {
     this.form = form;
     this.leaning = leaning;
@@ -989,11 +1012,12 @@ export class Wanderer extends THREE.Group {
     const hScale = form === 2 ? 1.80 / 1.72 : form === 3 ? 1.62 / 1.72 : 1.0;
     this.skeleton.root.scale.set(hScale, hScale, hScale);
 
-    // Update materials: robe and sleeves
-    const newRobeMat = this.materials.getFabricMaterial(leaning, false);
+    // Rebuild the robe material so its wind, hem-lag and breathing shader hooks remain active.
     if (this.robeMesh) {
-      this.robeMesh.material = newRobeMat;
-      this.robeMaterial = newRobeMat;
+      this.robeMesh.removeFromParent();
+      this.robeGeometry.dispose();
+      this.robeMaterial.dispose();
+      this.buildRobeMesh();
     }
 
     // Rebuild sleeves and sash
