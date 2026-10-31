@@ -76,12 +76,7 @@ const config: Config = {
           'BlinkMacSystemFont',
           'sans-serif',
         ],
-        mono: [
-          "'Geist Mono Variable'",
-          'ui-monospace',
-          'SFMono-Regular',
-          'monospace',
-        ],
+        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
         serif: [
           "'Instrument Serif'",
           "'Instrument Serif Fallback'",
