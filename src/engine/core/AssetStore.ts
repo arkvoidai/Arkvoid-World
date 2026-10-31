@@ -123,13 +123,10 @@ export class AssetStore {
     // mid phones: 512
     // low phones: 256
     const isDesktop = device.deviceClass === 'desktop';
-    if (isDesktop && device.gpuTier >= 3) {
+    if (isDesktop) {
       this.targetRes = 1024;
-      this.maxAnisotropy = 8;
-    } else if (device.gpuTier >= 2) {
-      this.targetRes = 1024;
-      this.maxAnisotropy = 4;
-    } else if (device.gpuTier === 1) {
+      this.maxAnisotropy = device.gpuTier >= 3 ? 8 : 4;
+    } else if (device.gpuTier >= 1) {
       this.targetRes = 512;
       this.maxAnisotropy = 2;
     } else {
@@ -469,12 +466,14 @@ export class AssetStore {
   }
 
   private startBackgroundLoading(): void {
-    void (async () => {
+    void this.catalog.ready.then(async () => {
       for (const slotId of LOAD_PRIORITY) {
         if (this.disposed) return;
         await this.loadSlotFromRepo(slotId);
       }
-    })();
+    }).catch(() => {
+      // Procedural fallback textures remain valid when discovery or network loading fails.
+    });
   }
 
   private async loadSlotFromRepo(slotId: TextureSlotId): Promise<void> {
