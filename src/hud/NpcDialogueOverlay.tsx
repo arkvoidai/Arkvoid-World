@@ -55,8 +55,15 @@ export default function NpcDialogueOverlay({
     try {
       const supabase = getSupabaseSafe();
       if (!supabase) throw new Error('World connection is not configured yet.');
-      const { data, error: invokeError } = await supabase.functions.invoke('mistral-npc', {
-        body: { npcId, message },
+      const { data, error: invokeError } = await supabase.functions.invoke('npc-talk', {
+        body: {
+          npcId,
+          message,
+          history: messages.slice(-6).map((entry) => ({
+            r: entry.role === 'assistant' ? 'n' : 'p',
+            t: entry.content.slice(0, 240),
+          })),
+        },
       });
       if (invokeError) {
         const context = (invokeError as { context?: Response }).context;
@@ -66,15 +73,22 @@ export default function NpcDialogueOverlay({
         }
         throw invokeError;
       }
-      if (!data || typeof data.reply !== 'string' || !data.reply.trim()) {
+      if (!data || typeof data.say !== 'string' || !data.say.trim()) {
         throw new Error('The resident could not answer just now. Try again in a moment.');
       }
-      setMessages((current) => [...current, { role: 'assistant', content: data.reply }]);
+      setMessages((current) => [...current, { role: 'assistant', content: data.say }]);
     } catch (err) {
       const messageText = err instanceof Error ? err.message : 'Conversation service is unavailable.';
-      setError(messageText.includes('MISTRAL_API_KEY')
-        ? 'The conversation service is waiting for its Mistral API key to be configured.'
-        : messageText);
+      const safeMessage = messageText.toLowerCase();
+      if (safeMessage.includes('rate_limited') || safeMessage.includes('limit')) {
+        setError('You have spoken enough for now. Return a little later.');
+      } else if (safeMessage.includes('llm') || safeMessage.includes('quota_unavailable')) {
+        setError('The resident is quiet just now. Try again shortly.');
+      } else if (safeMessage.includes('auth')) {
+        setError('Please reconnect before speaking with this resident.');
+      } else {
+        setError('The resident could not answer just now. Try again in a moment.');
+      }
     } finally {
       setBusy(false);
     }
@@ -137,7 +151,7 @@ export default function NpcDialogueOverlay({
             }
           }}
           rows={1}
-          maxLength={1000}
+          maxLength={280}
           placeholder={'Speak with ' + resident.name + '…'}
           className="max-h-24 min-h-11 flex-1 resize-none rounded-[15px] border border-[#dcd8cd] bg-[#fbfaf6] px-3.5 py-3 text-[13px] leading-relaxed outline-none placeholder:text-[#929187] focus:border-[#a98d61]"
         />

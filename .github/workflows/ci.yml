@@ -1,0 +1,61 @@
+name: Arkvoid World CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arkvoid-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Typecheck, lint, tests, budgets and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies from the committed lockfile
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint (warnings are errors)
+        run: bun run lint
+
+      - name: Run all discovered tests
+        run: bun run test
+
+      - name: Check collision invariants
+        run: bun run check:collision
+
+      - name: Build production bundle
+        run: bun run build
+
+      - name: Check bundle budget
+        run: bun run check:budget
+
+      - name: Lighthouse mobile budgets (poster-first Gate)
+        run: bunx @lhci/cli autorun --config=.lighthouserc.json
+
+      - name: Upload Lighthouse reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-poster-phase
+          path: .lighthouseci/
+          if-no-files-found: ignore
+          include-hidden-files: true

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, interactive-widget=overlays-content"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <meta name="theme-color" content="#FBFAF7" />
     <meta name="color-scheme" content="light" />
@@ -33,6 +33,7 @@
       content="A persistent fantasy world where characters remember you and continue living while you are away."
     />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="preconnect" href="https://ahnwqnmiotduzrsfacgv.supabase.co" crossorigin />
     <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />
     <script type="application/ld+json">
@@ -62,7 +63,56 @@
         ]
       }
     </script>
+    <script>
+      (() => {
+        performance.mark?.('arkvoid:navigation-start');
+        const startedAt = performance.now();
+        const query = new URLSearchParams(location.search);
+        const override = query.get('time');
+        const overrideHour = override === null ? null : Number(override);
+        const elapsedWorldMinutes = (Date.now() / 1000 - 1790812800) / 10;
+        const continuousWorldHour = 6 + elapsedWorldMinutes / 60;
+        const worldHour = overrideHour !== null && Number.isFinite(overrideHour)
+          ? ((overrideHour % 24) + 24) % 24
+          : ((continuousWorldHour % 24) + 24) % 24;
+        const phase = worldHour >= 5 && worldHour < 8 ? 'dawn' : worldHour >= 8 && worldHour < 17 ? 'day' : worldHour >= 17 && worldHour < 20 ? 'dusk' : 'night';
+        const orientation = matchMedia('(orientation: portrait)').matches ? 'portrait' : 'landscape';
+        const href = '/posters/hero-' + phase + '-' + orientation + '.webp';
+        fetch('/posters/manifest.json', { cache: 'no-cache' })
+          .then((response) => response.ok ? response.json() : null)
+          .then((manifest) => {
+            if (!manifest || !Array.isArray(manifest.posters) || !manifest.posters.includes(href)) return;
+            const preload = document.createElement('link');
+            preload.rel = 'preload';
+            preload.as = 'image';
+            preload.href = href;
+            document.head.appendChild(preload);
+            const poster = new Image();
+            poster.decoding = 'async';
+            poster.onload = () => {
+              document.documentElement.style.setProperty('--arkvoid-hero-poster', 'url("' + href + '")');
+              document.documentElement.dataset.heroPoster = 'ready';
+            };
+            poster.onerror = () => {
+              preload.remove();
+              document.documentElement.dataset.heroPoster = 'fallback';
+            };
+            poster.src = href;
+          })
+          .catch(() => { document.documentElement.dataset.heroPoster = 'fallback'; });
+        document.documentElement.style.setProperty('--arkvoid-boot-start', String(startedAt));
+        try {
+          const observer = new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) {
+              if (entry.name === 'first-paint') performance.mark?.('arkvoid:first-paint');
+            }
+          });
+          observer.observe({ type: 'paint', buffered: true });
+        } catch {}
+      })();
+    </script>
     <style>
+      :root { color-scheme: light; --arkvoid-hero-poster: none; }
       html,
       body {
         margin: 0;
@@ -70,15 +120,15 @@
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background-color: #1d1724;
-        color: #f6f0e9;
+        background-color: #FBFAF7;
+        color: #17141F;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
       }
       #root {
         width: 100%;
         height: 100%;
-        background-color: #1d1724;
+        background-color: #FBFAF7;
       }
       .arkvoid-boot {
         position: fixed;
@@ -86,15 +136,13 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background-color: #1d1724;
+        background-color: #FBFAF7;
         background-image:
-          radial-gradient(
-            circle at 50% 46%,
-            rgba(194, 119, 92, 0.18) 0%,
-            rgba(92, 63, 96, 0.16) 34%,
-            rgba(29, 23, 36, 0) 74%
-          ),
-          linear-gradient(160deg, #211a2a 0%, #1d1724 58%, #18141e 100%);
+          var(--arkvoid-hero-poster),
+          radial-gradient(ellipse at 50% 46%, rgba(255, 178, 122, 0.20) 0%, rgba(185, 166, 255, 0.12) 34%, transparent 74%),
+          linear-gradient(160deg, #fffefa 0%, #FBFAF7 58%, #F4F1EA 100%);
+        background-size: cover, auto, auto;
+        background-position: center, center, center;
       }
       .arkvoid-boot-wordmark {
         font-family:
@@ -106,10 +154,28 @@
         font-weight: 400;
         font-size: 1.15rem;
         letter-spacing: 0.34em;
-        color: #f6f0e9;
-        opacity: 0.82;
+        color: #17141F;
+        opacity: 0.78;
         user-select: none;
       }
+      #arkvoid-offline-status {
+        position: fixed;
+        z-index: 9999;
+        inset-inline: 16px;
+        bottom: max(12px, env(safe-area-inset-bottom));
+        width: fit-content;
+        max-width: calc(100vw - 32px);
+        margin-inline: auto;
+        padding: 7px 12px;
+        border: 1px solid rgba(23, 20, 31, 0.10);
+        border-radius: 999px;
+        background: rgba(251, 250, 247, 0.92);
+        color: rgba(23, 20, 31, 0.64);
+        font: 11px/1.35 system-ui, sans-serif;
+        text-align: center;
+        backdrop-filter: blur(12px);
+      }
+      #arkvoid-offline-status[hidden] { display: none !important; }
     </style>
   </head>
   <body>
@@ -118,6 +184,17 @@
         <span class="arkvoid-boot-wordmark">ARKVOID</span>
       </div>
     </div>
+    <div id="arkvoid-offline-status" role="status" aria-live="polite" hidden>Offline · Your world will reconnect when the network returns.</div>
+    <script>
+      performance.mark?.('arkvoid:boot-ui-visible');
+      (() => {
+        const status = document.getElementById('arkvoid-offline-status');
+        const update = () => { if (status) status.hidden = navigator.onLine; };
+        window.addEventListener('online', update, { passive: true });
+        window.addEventListener('offline', update, { passive: true });
+        update();
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

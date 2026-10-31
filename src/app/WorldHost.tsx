@@ -1,50 +1,81 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { Engine } from '@/engine/core/Engine';
-import {
-  type LeakTestReport,
-  runEngineLeakTest,
-} from '@/engine/core/leakTest';
-import { ScreenPresenter } from '@/engine/core/Presenter';
-import { QualityGovernor } from '@/engine/core/QualityGovernor';
-import {
-  loadUserQualityPreference,
-  resolveEffectiveTier,
-} from '@/engine/core/Quality';
 import type { BenchmarkReport } from '@/engine/core/Benchmark';
-import BenchmarkOverlay from '@/hud/BenchmarkOverlay';
-import { computePhaseVignetteStyle } from '@/engine/fx/Atmosphere';
-import { ShowcaseWorldSystem } from '@/engine/world/ShowcaseScene';
-import { runSceneAudit, type SceneAuditResult } from '@/engine/world/SceneAudit';
 import { DebugReadout } from '@/hud/DebugReadout';
 import {
-  type DeviceProfile,
   getImmediateDeviceProfile,
   resolveDeviceProfile,
+  type DeviceProfile,
 } from '@/lib/deviceProfile';
+import type { Engine } from '@/engine/core/Engine';
+import type { LeakTestReport } from '@/engine/core/leakTest';
+import type { SceneAuditResult } from '@/engine/world/SceneAudit';
+import type { ShowcaseWorldSystem } from '@/engine/world/ShowcaseScene';
 import { hourNow } from '@/lib/worldClock';
 import { sharedEngineBridge, useWorldBridgeStore } from '@/state/worldBridgeStore';
 import { WorldLoadingScreen } from '@/ui/WorldLoadingScreen';
 import { Pill } from '@/ui/Pill';
-import ActorsLineupOverlay from '@/hud/ActorsLineupOverlay';
-import NpcDialogueOverlay from '@/hud/NpcDialogueOverlay';
-import WorldMapOverlay, { type MapRegionId } from '@/hud/WorldMapOverlay';
 import type { FormId, LeaningId } from '@/engine/actors/WandererMaterials';
 import type { AnimationStateName } from '@/engine/actors/Animator';
+import type { MapRegionId } from '@/hud/WorldMapOverlay';
 
-import { GateOverlay } from '@/screens/GateOverlay';
-import { AwakeningScreen } from '@/screens/AwakeningScreen';
-import { ArrivalOverlay } from '@/screens/ArrivalOverlay';
 import { GuideWisp } from '@/hud/GuideWisp';
 import { useAuthStore } from '@/state/auth';
 import { useGameStore } from '@/state/game';
 import { bootstrapSession } from '@/app/bootstrap';
 import { resolvePostBootstrapMode, shouldCreateGuestSession } from '@/app/entryFlow';
 import type { Leaning } from '@/net/api';
+import { reportClientError } from '@/net/clientTelemetry';
+
+const GateOverlay = lazy(() => import('@/screens/GateOverlay').then((module) => ({ default: module.GateOverlay })));
+const AwakeningScreen = lazy(() => import('@/screens/AwakeningScreen').then((module) => ({ default: module.AwakeningScreen })));
+const ArrivalOverlay = lazy(() => import('@/screens/ArrivalOverlay').then((module) => ({ default: module.ArrivalOverlay })));
+const BenchmarkOverlay = lazy(() => import('@/hud/BenchmarkOverlay'));
+const ActorsLineupOverlay = lazy(() => import('@/hud/ActorsLineupOverlay'));
+const NpcDialogueOverlay = lazy(() => import('@/hud/NpcDialogueOverlay'));
+const WorldMapOverlay = lazy(() => import('@/hud/WorldMapOverlay'));
 
 const VisualReviewOverlay =
   import.meta.env.DEV || import.meta.env.VITE_ENABLE_REVIEW === '1'
     ? lazy(() => import('@/hud/VisualReviewOverlay'))
     : null;
+
+type WorldRuntime = {
+  Engine: typeof import('@/engine/core/Engine').Engine;
+  runEngineLeakTest: typeof import('@/engine/core/leakTest').runEngineLeakTest;
+  ScreenPresenter: typeof import('@/engine/core/Presenter').ScreenPresenter;
+  QualityGovernor: typeof import('@/engine/core/QualityGovernor').QualityGovernor;
+  loadUserQualityPreference: typeof import('@/engine/core/Quality').loadUserQualityPreference;
+  resolveEffectiveTier: typeof import('@/engine/core/Quality').resolveEffectiveTier;
+  ShowcaseWorldSystem: typeof import('@/engine/world/ShowcaseScene').ShowcaseWorldSystem;
+  runSceneAudit: typeof import('@/engine/world/SceneAudit').runSceneAudit;
+};
+let worldRuntimePromise: Promise<WorldRuntime> | null = null;
+function loadWorldRuntime(): Promise<WorldRuntime> {
+  if (!worldRuntimePromise) {
+    worldRuntimePromise = Promise.all([
+      import('@/engine/core/Engine'),
+      import('@/engine/core/leakTest'),
+      import('@/engine/core/Presenter'),
+      import('@/engine/core/QualityGovernor'),
+      import('@/engine/core/Quality'),
+      import('@/engine/world/ShowcaseScene'),
+      import('@/engine/world/SceneAudit'),
+    ]).then(([engine, leak, presenter, governor, quality, showcase, audit]) => {
+      performance.mark?.('arkvoid:engine-chunk-loaded');
+      return {
+      Engine: engine.Engine,
+      runEngineLeakTest: leak.runEngineLeakTest,
+      ScreenPresenter: presenter.ScreenPresenter,
+      QualityGovernor: governor.QualityGovernor,
+      loadUserQualityPreference: quality.loadUserQualityPreference,
+      resolveEffectiveTier: quality.resolveEffectiveTier,
+      ShowcaseWorldSystem: showcase.ShowcaseWorldSystem,
+      runSceneAudit: audit.runSceneAudit,
+      };
+    });
+  }
+  return worldRuntimePromise;
+}
 
 declare global {
   interface Window {
@@ -91,6 +122,7 @@ export default function WorldHost({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const vignetteRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<Engine | null>(null);
+  const startEngineRef = useRef<(() => Promise<void>) | null>(null);
   const showcaseRef = useRef<ShowcaseWorldSystem | null>(null);
   const [firstFrameReady, setFirstFrameReady] = useState(false);
   const [splashMounted, setSplashMounted] = useState(true);
@@ -124,12 +156,15 @@ export default function WorldHost({
   const [awakeningError, setAwakeningError] = useState<string | null>(null);
   const [hallReached, setHallReached] = useState(false);
   const [sessionReady, setSessionReady] = useState(() => viewMode !== 'boot');
+  const viewModeRef = useRef(viewMode);
+  useEffect(() => {
+    viewModeRef.current = viewMode;
+  }, [viewMode]);
   const worldReady = firstFrameReady && sessionReady;
 
   // Bootstrap session and route to gate, awakening, or arrival
   useEffect(() => {
     if (viewMode !== 'boot') {
-      setSessionReady(true);
       if (viewMode === 'gate' || viewMode === 'awakening') {
         sharedEngineBridge.enqueue({ type: 'setViewMode', mode: viewMode });
       }
@@ -165,7 +200,7 @@ export default function WorldHost({
         setSessionReady(true);
       })
       .catch((err) => {
-        console.warn('Bootstrap error:', err);
+        reportClientError('bootstrap', err);
         if (!cancelled) {
           setViewMode('gate');
           sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'gate' });
@@ -185,6 +220,46 @@ export default function WorldHost({
     };
     window.addEventListener('arkvoid:npc-talk', handleNpcTalk);
     return () => window.removeEventListener('arkvoid:npc-talk', handleNpcTalk);
+  }, []);
+
+  useEffect(() => {
+    const isTextEntry = (target: Element | null): boolean =>
+      target instanceof HTMLElement &&
+      target.matches('input, textarea, select, [contenteditable="true"]');
+
+    const syncTextFocus = () => {
+      const engine = engineRef.current;
+      if (!engine) return;
+      if (isTextEntry(document.activeElement)) engine.pause('text-input');
+      else engine.resume('text-input');
+    };
+
+    const viewport = window.visualViewport;
+    const syncViewport = () => {
+      const height = viewport?.height ?? window.innerHeight;
+      const offsetTop = viewport?.offsetTop ?? 0;
+      document.documentElement.style.setProperty('--arkvoid-visual-height', `${Math.round(height)}px`);
+      document.documentElement.style.setProperty('--arkvoid-visual-offset-top', `${Math.round(offsetTop)}px`);
+    };
+
+    const handleFocusOut = () => window.setTimeout(syncTextFocus, 0);
+    document.addEventListener('focusin', syncTextFocus);
+    document.addEventListener('focusout', handleFocusOut);
+    window.addEventListener('resize', syncViewport, { passive: true });
+    viewport?.addEventListener('resize', syncViewport, { passive: true });
+    viewport?.addEventListener('scroll', syncViewport, { passive: true });
+    syncViewport();
+    syncTextFocus();
+
+    return () => {
+      document.removeEventListener('focusin', syncTextFocus);
+      document.removeEventListener('focusout', handleFocusOut);
+      window.removeEventListener('resize', syncViewport);
+      viewport?.removeEventListener('resize', syncViewport);
+      viewport?.removeEventListener('scroll', syncViewport);
+      document.documentElement.style.removeProperty('--arkvoid-visual-height');
+      document.documentElement.style.removeProperty('--arkvoid-visual-offset-top');
+    };
   }, []);
 
   // Subscribe to auth state: on sign-out reset to gate
@@ -233,7 +308,7 @@ export default function WorldHost({
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to open the world. Please try again.';
-      console.warn('[Arkvoid] Begin action error:', err);
+      reportClientError('begin', err);
       setAwakeningError(message);
       setViewMode('gate');
       sharedEngineBridge.enqueue({ type: 'setViewMode', mode: 'gate' });
@@ -300,7 +375,10 @@ export default function WorldHost({
   const syncVignetteOverlay = useCallback(() => {
     const el = vignetteRef.current;
     if (!el) return;
-    el.style.background = computePhaseVignetteStyle(hourNow());
+    const hour = hourNow();
+    const phase = hour >= 5 && hour < 8 ? 'dawn' : hour >= 8 && hour < 17 ? 'day' : hour >= 17 && hour < 20 ? 'dusk' : 'night';
+    const tint = phase === 'dawn' ? '255,122,26' : phase === 'dusk' ? '124,92,255' : phase === 'night' ? '64,58,104' : '255,255,255';
+    el.style.background = `radial-gradient(ellipse at 50% 52%, rgba(${tint},0.065), transparent 68%)`;
   }, []);
 
   // Update the phase-tinted radial vignette at most once per second (1 Hz)
@@ -311,12 +389,10 @@ export default function WorldHost({
   }, [syncVignetteOverlay]);
 
   useEffect(() => {
-    if (!worldReady) return;
-    const timer = window.setTimeout(() => {
-      setSplashMounted(false);
-    }, 360);
+    if (!sessionReady || (viewMode !== 'gate' && !worldReady)) return;
+    const timer = window.setTimeout(() => setSplashMounted(false), 180);
     return () => window.clearTimeout(timer);
-  }, [worldReady]);
+  }, [sessionReady, viewMode, worldReady]);
 
   const handleCaptureFrame = useCallback((): string | null => {
     const eng = engineRef.current;
@@ -375,10 +451,10 @@ export default function WorldHost({
     let auditInterval: number | null = null;
     let auditSettleTimer: number | null = null;
 
-    const mountEngine = (device: DeviceProfile) => {
+    const mountEngine = (device: DeviceProfile, runtime: WorldRuntime) => {
       if (cancelled) return;
-      const presenter = new ScreenPresenter(device, probe || audit);
-      const engine = new Engine(hostEl, {
+      const presenter = new runtime.ScreenPresenter(device, probe || audit);
+      const engine = new runtime.Engine(hostEl, {
         device,
         presenter,
         bridge: sharedEngineBridge,
@@ -392,7 +468,7 @@ export default function WorldHost({
           ? (leaning as LeaningId)
           : undefined;
 
-      const showcase = new ShowcaseWorldSystem({
+      const showcase = new runtime.ShowcaseWorldSystem({
         reviewShots,
         actorsLineup: actors,
         playerForm: parsedForm,
@@ -401,16 +477,16 @@ export default function WorldHost({
       showcaseRef.current = showcase;
 
       // Determine initial quality tier
-      const pref = loadUserQualityPreference();
-      const initialTier = resolveEffectiveTier(pref, device);
-      const governor = new QualityGovernor(initialTier, (msg) => {
+      const pref = runtime.loadUserQualityPreference();
+      const initialTier = runtime.resolveEffectiveTier(pref, device);
+      const governor = new runtime.QualityGovernor(initialTier, (msg) => {
         setToastMessage(msg);
         setTimeout(() => setToastMessage(null), 5000);
       });
 
       const performAudit = () => {
         if (cancelled) return;
-        const res = runSceneAudit(
+        const res = runtime.runSceneAudit(
           engine.scene,
           showcase,
           engine.assets,
@@ -421,6 +497,7 @@ export default function WorldHost({
 
       engine.events.on('firstFrame', () => {
         if (!cancelled) {
+          performance.mark?.('arkvoid:first-world-frame');
           setFirstFrameReady(true);
           syncVignetteOverlay();
           if (import.meta.env.DEV && typeof window !== 'undefined') {
@@ -447,6 +524,13 @@ export default function WorldHost({
 
       engine.register(governor);
       engine.register(showcase);
+      const activeElement = document.activeElement;
+      if (
+        activeElement instanceof HTMLElement &&
+        activeElement.matches('input, textarea, select, [contenteditable="true"]')
+      ) {
+        engine.pause('text-input');
+      }
       engine.start();
 
       if (audit) {
@@ -474,24 +558,71 @@ export default function WorldHost({
       }
     };
 
-    const initialDevice = getImmediateDeviceProfile();
+    let idleHandle: number | null = null;
+    let idleTimer: number | null = null;
+    let startPromise: Promise<void> | null = null;
 
-    if (import.meta.env.DEV && leakTest) {
-      void resolveDeviceProfile().then(async (resolvedDevice) => {
-        if (cancelled) return;
-        const report = await runEngineLeakTest(hostEl, resolvedDevice, 10);
-        if (typeof window !== 'undefined') {
-          window.__ARKVOID_LEAK_REPORT__ = report;
+    const startEngine = (): Promise<void> => {
+      if (startPromise) return startPromise;
+      startPromise = (async () => {
+        try {
+          const runtime = await loadWorldRuntime();
+          if (cancelled) return;
+          const initialDevice = getImmediateDeviceProfile();
+          if (import.meta.env.DEV && leakTest) {
+            const resolvedDevice = await resolveDeviceProfile();
+            if (cancelled) return;
+            const report = await runtime.runEngineLeakTest(hostEl, resolvedDevice, 10);
+            if (typeof window !== 'undefined') window.__ARKVOID_LEAK_REPORT__ = report;
+            mountEngine(resolvedDevice, runtime);
+          } else {
+            mountEngine(initialDevice, runtime);
+            void resolveDeviceProfile();
+          }
+        } catch (error) {
+          reportClientError('world-runtime', error);
+          if (!cancelled) {
+            const detail = error instanceof Error ? error.message.toLowerCase() : '';
+            setAwakeningError(
+              detail.includes('webgl') || detail.includes('context')
+                ? '3D graphics are unavailable on this device. You can still return to the Gate.'
+                : 'The world could not open just now. Please try again.',
+            );
+          }
+          throw error;
         }
-        mountEngine(resolvedDevice);
-      });
-    } else {
-      mountEngine(initialDevice);
-      void resolveDeviceProfile();
+      })();
+      return startPromise;
+    };
+    startEngineRef.current = startEngine;
+
+    const connection = (typeof navigator !== 'undefined'
+      ? (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection
+      : undefined);
+    const connectionIsConstrained = Boolean(
+      connection?.saveData || ['slow-2g', '2g', '3g'].includes(connection?.effectiveType ?? ''),
+    );
+    const immediateProfile = getImmediateDeviceProfile();
+    const deviceIsConstrained = immediateProfile.gpuTier <= 1 || immediateProfile.deviceMemory <= 3;
+    const shouldWaitForBegin = connectionIsConstrained || deviceIsConstrained;
+
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    if (!shouldWaitForBegin) {
+      if (typeof idleWindow.requestIdleCallback === 'function') {
+        idleHandle = idleWindow.requestIdleCallback(() => { void startEngine().catch(() => undefined); }, { timeout: 2500 });
+      } else {
+        idleTimer = window.setTimeout(() => { void startEngine().catch(() => undefined); }, 1200);
+      }
     }
 
     const cleanupEngine = () => {
       cancelled = true;
+      if (idleHandle !== null) idleWindow.cancelIdleCallback?.(idleHandle);
+      if (idleTimer !== null) window.clearTimeout(idleTimer);
+      if (startEngineRef.current === startEngine) startEngineRef.current = null;
       if (benchInterval) {
         window.clearInterval(benchInterval);
         benchInterval = null;
@@ -523,14 +654,22 @@ export default function WorldHost({
       window.removeEventListener('pagehide', cleanupEngine);
       cleanupEngine();
     };
-  }, [actors, audit, benchmark, form, leaning, leakTest, probe, reviewShots, syncVignetteOverlay]);
+  }, [actors, audit, benchmark, form, leaning, leakTest, probe, reviewShots, syncVignetteOverlay, viewModeRef]);
+
+  // A saved character can enter Arrival directly after asynchronous bootstrap;
+  // low-tier devices must start the runtime here rather than waiting for a Gate button.
+  useEffect(() => {
+    if (viewMode === 'awakening' || viewMode === 'arrival' || viewMode === 'world') {
+      void startEngineRef.current?.().catch(() => undefined);
+    }
+  }, [viewMode, sessionReady]);
 
   return (
     <main className="relative h-full w-full overflow-hidden bg-[#fbfaf7] select-none">
       <div
         ref={hostRef}
         data-testid="world-canvas-host"
-        className="h-full w-full"
+        className="arkvoid-world-canvas h-full w-full"
       />
 
       {/* Phase-graded soft radial vignette overlay (pointer-events: none, updated <= 1 Hz, no CSS filter on canvas) */}
@@ -563,26 +702,42 @@ export default function WorldHost({
       )}
 
       {/* Step 15 Gate Overlay: Welcome over live showcase world */}
-      {viewMode === 'gate' && worldReady && (
-        <GateOverlay
-          onBegin={handleBegin}
-          onAccountResolved={handleAccountResolved}
-          isLoading={isBeginning}
-          errorMessage={awakeningError}
-        />
+      {viewMode === 'gate' && sessionReady && (
+        <Suspense fallback={null}>
+          <GateOverlay
+            onBegin={async () => { await startEngineRef.current?.(); await handleBegin(); }}
+            onAccountResolved={handleAccountResolved}
+            isLoading={isBeginning}
+            errorMessage={awakeningError}
+          />
+        </Suspense>
       )}
 
       {/* Step 15 Awakening Screen: 3D character creation */}
       {viewMode === 'awakening' && worldReady && (
-        <AwakeningScreen
-          onAwakenComplete={handleAwakenComplete}
-          error={awakeningError}
-        />
+        <Suspense fallback={null}>
+          <AwakeningScreen
+            onAwakenComplete={handleAwakenComplete}
+            error={awakeningError}
+          />
+        </Suspense>
       )}
 
       {/* Step 15 Arrival Overlay: Camera rail arrival banner */}
       {viewMode === 'arrival' && (
-        <ArrivalOverlay onSkip={handleSkipArrival} />
+        <Suspense fallback={null}>
+          <ArrivalOverlay onSkip={handleSkipArrival} />
+        </Suspense>
+      )}
+
+      {awakeningError && viewMode !== 'gate' && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none fixed bottom-[calc(env(safe-area-inset-bottom)+12px)] left-1/2 z-system max-w-[calc(100vw-32px)] -translate-x-1/2 rounded-full border border-white/70 bg-[#fbfaf7]/92 px-3 py-2 text-center text-[11px] text-[#514d45] shadow-sm backdrop-blur"
+        >
+          {awakeningError}
+        </div>
       )}
 
       {/* Step 15 First-Run Guidance: Glowing guide wisp toward hall stair */}
@@ -594,13 +749,15 @@ export default function WorldHost({
       )}
 
       {activeNpcId && viewMode === 'world' && (
-        <NpcDialogueOverlay
-          npcId={activeNpcId}
-          onClose={() => {
-            window.dispatchEvent(new Event('arkvoid:npc-close'));
-            setActiveNpcId(null);
-          }}
-        />
+        <Suspense fallback={null}>
+          <NpcDialogueOverlay
+            npcId={activeNpcId}
+            onClose={() => {
+              window.dispatchEvent(new Event('arkvoid:npc-close'));
+              setActiveNpcId(null);
+            }}
+          />
+        </Suspense>
       )}
 
       {viewMode === 'world' && (
@@ -616,11 +773,13 @@ export default function WorldHost({
       )}
 
       {showWorldMap && viewMode === 'world' && (
-        <WorldMapOverlay
-          currentRegion={currentRegionId}
-          onClose={() => setShowWorldMap(false)}
-          onTravel={handleMapTravel}
-        />
+        <Suspense fallback={null}>
+          <WorldMapOverlay
+            currentRegion={currentRegionId}
+            onClose={() => setShowWorldMap(false)}
+            onTravel={handleMapTravel}
+          />
+        </Suspense>
       )}
 
       {/* Contextual Action Pill (world mode only) */}
@@ -639,10 +798,12 @@ export default function WorldHost({
 
       {/* Benchmark results overlay (?bench=1) */}
       {benchmarkReport && (
-        <BenchmarkOverlay
-          report={benchmarkReport}
-          onClose={() => setBenchmarkReport(null)}
-        />
+        <Suspense fallback={null}>
+          <BenchmarkOverlay
+            report={benchmarkReport}
+            onClose={() => setBenchmarkReport(null)}
+          />
+        </Suspense>
       )}
 
       {import.meta.env.DEV && (debug || probe || assets) ? (
@@ -660,11 +821,13 @@ export default function WorldHost({
       ) : null}
 
       {actors && (
-        <ActorsLineupOverlay
-          onCaptureFrame={handleCaptureFrame}
-          onSelectAnimation={handleSelectActorAnimation}
-          onToggleAutoCycle={handleToggleAutoCycle}
-        />
+        <Suspense fallback={null}>
+          <ActorsLineupOverlay
+            onCaptureFrame={handleCaptureFrame}
+            onSelectAnimation={handleSelectActorAnimation}
+            onToggleAutoCycle={handleToggleAutoCycle}
+          />
+        </Suspense>
       )}
 
       {reviewShots && VisualReviewOverlay ? (

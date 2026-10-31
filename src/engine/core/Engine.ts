@@ -251,6 +251,7 @@ export class Engine {
     canvas.addEventListener('webglcontextrestored', onContextRestored);
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', onVisibilityChange);
+      if (document.hidden) this.pause('visibility-hidden');
     }
 
     this.disposables.add(() => {
@@ -274,7 +275,7 @@ export class Engine {
     if (!this.initialized) {
       this.init();
     }
-    if (this.running) return this;
+    if (this.running || this.pauseReasons.size > 0) return this;
     this.running = true;
     this.lastTimestampMs = null;
 
