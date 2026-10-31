@@ -267,3 +267,25 @@ body,
 .arkvoid-loading-screen {
   min-height: var(--arkvoid-visual-height, 100dvh);
 }
+
+.arkvoid-gate-poster {
+  position: absolute;
+  inset: -2%;
+  background-image:
+    var(--arkvoid-hero-poster),
+    radial-gradient(ellipse at 68% 24%, rgba(224, 184, 126, 0.22), transparent 40%),
+    radial-gradient(ellipse at 18% 80%, rgba(104, 127, 111, 0.28), transparent 46%),
+    linear-gradient(145deg, #17241F 0%, #3C4B40 48%, #17221E 100%);
+  background-position: center, 68% 24%, 18% 80%, center;
+  background-size: cover, 150% 150%, 150% 150%, cover;
+  transform: scale(1.015);
+  animation: arkvoid-poster-drift 48s ease-in-out infinite alternate;
+  will-change: transform;
+}
+@keyframes arkvoid-poster-drift {
+  from { transform: scale(1.015) translate3d(0, 0, 0); }
+  to { transform: scale(1.075) translate3d(-0.6%, 0.35%, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arkvoid-gate-poster { animation: none; transform: none; }
+}
