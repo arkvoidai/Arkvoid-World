@@ -199,7 +199,7 @@ function installVitals(): void {
         interactions.set(event.interactionId, Math.max(interactions.get(event.interactionId) ?? 0, event.duration));
       }
     }
-  }, { type: 'event', buffered: true, durationThreshold: 40 });
+  }, { type: 'event', buffered: true, durationThreshold: 40 } as PerformanceObserverInit);
 
   observe((entries) => {
     for (const entry of entries) {
