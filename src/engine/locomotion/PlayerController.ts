@@ -197,8 +197,8 @@ export class PlayerController {
     // 1. Calculate desired movement direction relative to camera yaw
     const hasMoveInput = Math.hypot(input.moveX, input.moveY) > 0.05;
     let targetSpeed = 0;
-    let moveDirX = 0;
-    let moveDirZ = 0;
+    let moveDirX: number;
+    let moveDirZ: number;
 
     if (hasMoveInput) {
       const maxSpeed = input.run ? this.runSpeed : this.walkSpeed;
