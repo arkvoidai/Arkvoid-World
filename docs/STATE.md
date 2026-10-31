@@ -329,3 +329,14 @@
 - Atmosphere support currently includes a CPU reference model, not the GPU scattering LUT pipeline. Clouds remain the existing layered heightfield/puff renderer with weather-responsive coverage and density; volumetric raymarching, cloud shadows, rain/snow systems and cloud-coupled god rays remain future work.
 - River ribbons are deterministic geometry data and are not yet connected to streamed flow tiles or the live water renderer. Lakes, refraction, planar reflections, underwater collision and waterfall spray/mist LOD remain future work.
 - The merged expansion branch's GitHub Actions validation passed: TypeScript, 94 automated tests, and production build. The world JS chunk remained approximately 1.02 MB minified, so code-splitting is still an optimisation task. Android and desktop visual/performance captures were not produced.
+
+
+## World reveal and portal-free navigation (2026-10-31)
+
+- Corrected the third-person camera arm and shoulder-right basis so camera yaw, player movement, keyboard, touch stick and gamepad share the same forward/right coordinate frame. Added regression tests for camera orientation and forward/back/left/right movement.
+- Added a built-world reveal camera rail for the first visit. It tours Home Reach and the three existing built continents with smooth local camera movement and intentional cuts between far-separated regions; user input dismisses the reveal.
+- Removed the three Home Reach inter-continent portal arches, regional return arches and the old sealed-gate interaction. The Atlas now clearly communicates direct region travel.
+- Expanded Dawn Terrace (Island A) from 26 m to 38 m radius, expanded its Dawn Terrace discovery boundary from 34 m to 35 m and increased its tree placement target. Neighbour island coordinates and bridge definitions were preserved.
+- Connected distant regional ground materials to the existing AssetStore PBR slots (rock, grass and moss), refreshed those textures as assets load, and replaced repeated cone-shaped tree crowns with rounded instanced crowns. Regional forest density varies by biome and phone/desktop tier.
+- Added curved hair-strand detail to Meilin, Yue and Sylva. The procedural Wanderer remains a stylised prototype and is not yet a photoreal production character; this requires authored, licensed, rigged 3D character assets and a validated animation/LOD pipeline.
+- These changes do not claim full open-world chunk streaming, worker-thread generation, volumetric clouds, terrain-carved rivers or device-verified frame budgets. Those remain future work and require profiling on representative phones and desktops.
