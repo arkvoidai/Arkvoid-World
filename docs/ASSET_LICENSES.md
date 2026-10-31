@@ -11,3 +11,5 @@
 | roof | Poly Haven | CC0 | yes | https://polyhaven.com |
 | stone | Poly Haven | CC0 | yes | https://polyhaven.com |
 | timber | Poly Haven | CC0 | yes | https://polyhaven.com |
+| Geist Variable | Fontsource / upstream Geist project | SIL Open Font License 1.1 | yes | https://github.com/google/fonts/tree/main/ofl/geist |
+| Instrument Serif | Fontsource / Instrument Serif Project | SIL Open Font License 1.1 | yes | https://github.com/Instrument/instrument-serif |
