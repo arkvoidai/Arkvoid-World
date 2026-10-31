@@ -146,7 +146,7 @@ body,
   }
 }
 
-/* First paint uses the same deep dusk tone as the world canvas to prevent a white flash. */
+/* The in-app loader uses the same pearl surface as the HTML boot screen. */
 .arkvoid-loading-screen {
   display: grid;
   width: 100%;
@@ -249,4 +249,21 @@ body,
   .arkvoid-loading-track span {
     animation: none;
   }
+}
+
+/* The interactive canvas owns gestures; documents and sheets retain pinch zoom. */
+.arkvoid-world-canvas,
+.arkvoid-world-canvas canvas {
+  touch-action: none;
+}
+.arkvoid-world-canvas {
+  height: var(--arkvoid-visual-height, 100dvh);
+}
+[role="dialog"],
+[data-sheet],
+.arkvoid-sheet-scroll {
+  touch-action: pan-y pinch-zoom;
+}
+.arkvoid-loading-screen {
+  min-height: var(--arkvoid-visual-height, 100dvh);
 }
