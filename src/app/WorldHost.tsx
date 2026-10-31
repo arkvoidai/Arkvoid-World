@@ -603,9 +603,13 @@ export default function WorldHost({
     const deviceIsConstrained = immediateProfile.gpuTier <= 1 || immediateProfile.deviceMemory <= 3;
     const shouldWaitForBegin = connectionIsConstrained || deviceIsConstrained;
 
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
     if (!shouldWaitForBegin) {
-      if ('requestIdleCallback' in window) {
-        idleHandle = window.requestIdleCallback(() => { void startEngine().catch(() => undefined); }, { timeout: 2500 });
+      if (typeof idleWindow.requestIdleCallback === 'function') {
+        idleHandle = idleWindow.requestIdleCallback(() => { void startEngine().catch(() => undefined); }, { timeout: 2500 });
       } else {
         idleTimer = window.setTimeout(() => { void startEngine().catch(() => undefined); }, 1200);
       }
@@ -615,7 +619,7 @@ export default function WorldHost({
 
     const cleanupEngine = () => {
       cancelled = true;
-      if (idleHandle !== null && 'cancelIdleCallback' in window) window.cancelIdleCallback(idleHandle);
+      if (idleHandle !== null) idleWindow.cancelIdleCallback?.(idleHandle);
       if (idleTimer !== null) window.clearTimeout(idleTimer);
       if (startEngineRef.current === startEngine) startEngineRef.current = null;
       if (benchInterval) {
