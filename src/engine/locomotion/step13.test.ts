@@ -328,14 +328,10 @@ test('Step 13: InteractablesSystem candidate scoring, bell ringing, and seated s
   const rig = new CameraRig(camera, mockDesktopDevice);
 
   let bellRung = false;
-  let toastMsg = '';
 
   const interactables = new InteractablesSystem(controller, rig, {
     onBellRung: () => {
       bellRung = true;
-    },
-    onToast: (msg) => {
-      toastMsg = msg;
     },
   });
 
@@ -366,14 +362,10 @@ test('Step 13: InteractablesSystem candidate scoring, bell ringing, and seated s
   }
   assert.ok(mockBellMesh.rotation.z !== 0, 'Bell mesh should swing via pendulum physics');
 
-  // 3. Move player near sealed gate (0, 0, -21)
+  // 3. The old sealed-gate approach no longer exposes a false portal prompt.
   controller.teleport(0, 0, -19.5, 0);
   interactables.update(0.016, 2.0, false, false);
-
-  const gateCandidate = interactables.getBestCandidate();
-  assert.ok(gateCandidate !== null && gateCandidate.kind === 'gate');
-  interactables.triggerInteraction();
-  assert.equal(toastMsg, 'The path ahead is sealed.');
+  assert.equal(interactables.getBestCandidate(), null);
 
   // 4. Move player near Spirit Pond sit spot (-9.0, 0.05, -2.6)
   controller.teleport(-9.0, 0.05, -2.4, 0);
