@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=overlays-content"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <meta name="theme-color" content="#FBFAF7" />
     <meta name="color-scheme" content="light" />
@@ -67,8 +67,15 @@
       (() => {
         performance.mark?.('arkvoid:navigation-start');
         const startedAt = performance.now();
-        const hour = new Date().getHours();
-        const phase = hour >= 5 && hour < 8 ? 'dawn' : hour >= 8 && hour < 17 ? 'day' : hour >= 17 && hour < 20 ? 'dusk' : 'night';
+        const query = new URLSearchParams(location.search);
+        const override = query.get('time');
+        const overrideHour = override === null ? null : Number(override);
+        const elapsedWorldMinutes = (Date.now() / 1000 - 1790812800) / 10;
+        const continuousWorldHour = 6 + elapsedWorldMinutes / 60;
+        const worldHour = overrideHour !== null && Number.isFinite(overrideHour)
+          ? ((overrideHour % 24) + 24) % 24
+          : ((continuousWorldHour % 24) + 24) % 24;
+        const phase = worldHour >= 5 && worldHour < 8 ? 'dawn' : worldHour >= 8 && worldHour < 17 ? 'day' : worldHour >= 17 && worldHour < 20 ? 'dusk' : 'night';
         const orientation = matchMedia('(orientation: portrait)').matches ? 'portrait' : 'landscape';
         const href = '/posters/hero-' + phase + '-' + orientation + '.webp';
         fetch('/posters/manifest.json', { cache: 'no-cache' })
@@ -93,10 +100,7 @@
             poster.src = href;
           })
           .catch(() => { document.documentElement.dataset.heroPoster = 'fallback'; });
-        document.addEventListener('DOMContentLoaded', () => {
-          performance.mark?.('arkvoid:boot-ui-visible');
-          document.documentElement.style.setProperty('--arkvoid-boot-start', String(startedAt));
-        }, { once: true });
+        document.documentElement.style.setProperty('--arkvoid-boot-start', String(startedAt));
         try {
           const observer = new PerformanceObserver((list) => {
             for (const entry of list.getEntries()) {
@@ -182,6 +186,7 @@
     </div>
     <div id="arkvoid-offline-status" role="status" aria-live="polite" hidden>Offline · Your world will reconnect when the network returns.</div>
     <script>
+      performance.mark?.('arkvoid:boot-ui-visible');
       (() => {
         const status = document.getElementById('arkvoid-offline-status');
         const update = () => { if (status) status.hidden = navigator.onLine; };
