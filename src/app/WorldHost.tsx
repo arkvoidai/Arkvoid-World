@@ -28,7 +28,7 @@ import { reportClientError } from '@/net/clientTelemetry';
 
 const GateOverlay = lazy(() => import('@/screens/GateOverlay').then((module) => ({ default: module.GateOverlay })));
 const AwakeningScreen = lazy(() => import('@/screens/AwakeningScreen').then((module) => ({ default: module.AwakeningScreen })));
-const ArrivalOverlay = lazy(() => import('@/screens/ArrivalOverlay'));
+const ArrivalOverlay = lazy(() => import('@/screens/ArrivalOverlay').then((module) => ({ default: module.ArrivalOverlay })));
 const BenchmarkOverlay = lazy(() => import('@/hud/BenchmarkOverlay'));
 const ActorsLineupOverlay = lazy(() => import('@/hud/ActorsLineupOverlay'));
 const NpcDialogueOverlay = lazy(() => import('@/hud/NpcDialogueOverlay'));
