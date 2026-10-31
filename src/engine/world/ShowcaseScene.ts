@@ -307,22 +307,6 @@ export class ShowcaseWorldSystem implements System {
       }
     }
 
-    // First visit opens on a continuous cinematic survey of the built world.
-    // Explicit review, benchmark, walk-test and rail overrides remain deterministic.
-    if (
-      !this.railController.isPlaying() &&
-      this.reviewShotIndex === null &&
-      !this.isActorsMode &&
-      !this.isWalkTest &&
-      !ctx.device.reducedMotion &&
-      this.benchmarkSession === null
-    ) {
-      this.railController.play(BUILT_IN_RAILS['world-reveal']!, {
-        loop: true,
-        handheldDrift: false,
-      });
-    }
-
     const initialHour = hourNow();
     ctx.bridge.mutable.hour = initialHour;
     timeOfDayState(initialHour, this.skyState);
@@ -676,7 +660,22 @@ export class ShowcaseWorldSystem implements System {
           this.inputManager?.setLocked(true);
         } else if (cmd.mode === 'world') {
           if (this.previewWanderer) this.previewWanderer.visible = false;
-          this.hasStartedLocomotion = true;
+          if (
+            !this.railController.isPlaying() &&
+            !this.isActorsMode &&
+            !this.isWalkTest &&
+            this.reviewShotIndex === null &&
+            !ctx.device.reducedMotion
+          ) {
+            // Direct entry uses the same reveal as the normal arrival flow.
+            this.hasStartedLocomotion = false;
+            this.railController.play(BUILT_IN_RAILS['world-reveal']!, {
+              loop: true,
+              handheldDrift: false,
+            });
+          } else {
+            this.hasStartedLocomotion = true;
+          }
           this.inputManager?.setLocked(false);
         }
       } else if (cmd.type === 'setPreviewFigure') {
@@ -706,20 +705,26 @@ export class ShowcaseWorldSystem implements System {
           duration: dur,
           onDone: () => {
             this.viewMode = 'world';
-            this.hasStartedLocomotion = true;
+            if (!ctx.device.reducedMotion && !this.isActorsMode) {
+              // The world opens only after the existing Gate → Awakening → Arrival flow completes.
+              this.hasStartedLocomotion = false;
+              this.railController.play(BUILT_IN_RAILS['world-reveal']!, {
+                loop: true,
+                handheldDrift: false,
+              });
+            } else {
+              this.hasStartedLocomotion = true;
+              this.cameraRig?.startHandoffFromShowcase(ctx.camera.position, this.activeLookTarget);
+            }
             this.inputManager?.setLocked(false);
-            this.cameraRig?.startHandoffFromShowcase(ctx.camera.position, this.activeLookTarget);
             cmd.onDone?.();
           },
         });
       } else if (cmd.type === 'skipArrivalRail') {
         if (this.railController.isPlaying() && !this.arrivalShortened) {
           this.arrivalShortened = true;
+          // skipToEnd invokes the Arrival onDone callback, which starts the world reveal. 
           this.railController.skipToEnd(ctx.camera);
-          this.viewMode = 'world';
-          this.hasStartedLocomotion = true;
-          this.inputManager?.setLocked(false);
-          this.cameraRig?.startHandoffFromShowcase(ctx.camera.position, this.activeLookTarget);
         }
       }
     });
