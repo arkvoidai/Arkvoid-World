@@ -273,8 +273,20 @@ export class Wanderer extends THREE.Group {
     // Add smooth body volumes (head sphere, torso cylinder, hands)
     const skinMat = this.materials.getSkinMaterial();
 
-    const headGeo = new THREE.SphereGeometry(0.11, 16, 12);
-    headGeo.scale(0.85, 1.1, 0.95);
+    // Tapered chin and cheek plane replace the perfect sphere that gave the old doll-like face.
+    const headGeo = new THREE.LatheGeometry([
+      new THREE.Vector2(0.012, -0.126),
+      new THREE.Vector2(0.046, -0.115),
+      new THREE.Vector2(0.073, -0.088),
+      new THREE.Vector2(0.089, -0.045),
+      new THREE.Vector2(0.095, 0.005),
+      new THREE.Vector2(0.089, 0.055),
+      new THREE.Vector2(0.070, 0.095),
+      new THREE.Vector2(0.038, 0.122),
+      new THREE.Vector2(0.008, 0.132),
+    ], 32);
+    headGeo.scale(0.9, 0.98, 0.86);
+    headGeo.computeVertexNormals();
     const headMesh = new THREE.Mesh(headGeo, skinMat);
     headMesh.position.y = 0.04;
     head.add(headMesh);
@@ -603,6 +615,30 @@ export class Wanderer extends THREE.Group {
       );
     }
 
+    // Soft, individually shaped brows add expression without oversized cartoon markings.
+    addTube(
+      eyeParts,
+      [
+        new THREE.Vector3(-0.059, 0.082, 0.086),
+        new THREE.Vector3(-0.039, 0.090, 0.098),
+        new THREE.Vector3(-0.018, 0.083, 0.095),
+      ],
+      0.0026,
+      '#4B342B',
+      10,
+    );
+    addTube(
+      eyeParts,
+      [
+        new THREE.Vector3(0.018, 0.083, 0.095),
+        new THREE.Vector3(0.039, 0.090, 0.098),
+        new THREE.Vector3(0.059, 0.082, 0.086),
+      ],
+      0.0026,
+      '#4B342B',
+      10,
+    );
+
     const eyeGeometry = mergeGeometries(eyeParts, false);
     for (const geometry of eyeParts) geometry.dispose();
     if (!eyeGeometry) throw new Error('Unable to build wanderer eye geometry');
@@ -818,6 +854,8 @@ export class Wanderer extends THREE.Group {
       backHair.castShadow = true;
       this.eyeGroup.add(backHair);
 
+      // Keep the face-framing locks distinct; merge the six long strands into one draw call.
+      const flowingStrandGeometries: THREE.BufferGeometry[] = [];
       for (const side of [-1, 1]) {
         const lock = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.055, 0.42, 10), hairMat);
         lock.name = 'resident_hair_lock';
@@ -826,7 +864,6 @@ export class Wanderer extends THREE.Group {
         lock.castShadow = true;
         this.eyeGroup.add(lock);
 
-        // Three tapered, curved locks per side break up the single-piece doll-hair silhouette.
         for (let strand = 0; strand < 3; strand++) {
           const offset = strand * 0.018;
           const curve = new THREE.CatmullRomCurve3([
@@ -835,15 +872,17 @@ export class Wanderer extends THREE.Group {
             new THREE.Vector3(side * (0.145 + offset), -0.38, -0.055),
             new THREE.Vector3(side * (0.115 + offset), -0.66 - (strand % 2) * 0.07, 0.015 + offset),
           ]);
-          const flowingLock = new THREE.Mesh(
-            new THREE.TubeGeometry(curve, 18, 0.012 + strand * 0.0015, 6, false),
-            hairMat,
-          );
-          flowingLock.name = 'resident_flowing_hair_strand';
-          flowingLock.castShadow = true;
-          this.eyeGroup.add(flowingLock);
+          flowingStrandGeometries.push(new THREE.TubeGeometry(curve, 18, 0.012 + strand * 0.0015, 6, false));
         }
       }
+
+      const flowingGeometry = mergeGeometries(flowingStrandGeometries, false);
+      for (const geometry of flowingStrandGeometries) geometry.dispose();
+      if (!flowingGeometry) throw new Error('Unable to build resident flowing hair');
+      const flowingHair = new THREE.Mesh(flowingGeometry, hairMat);
+      flowingHair.name = 'resident_flowing_hair_strands';
+      flowingHair.castShadow = true;
+      this.eyeGroup.add(flowingHair);
 
       const ornamentColor = this.resident === 'meilin' ? '#B77B65' : this.resident === 'yue' ? '#D6B86D' : '#8EAC75';
       const ornamentMat = this.materials.getAdornmentMaterial(ornamentColor);
