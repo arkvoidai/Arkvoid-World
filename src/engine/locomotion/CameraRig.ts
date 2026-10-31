@@ -173,16 +173,18 @@ export class CameraRig {
     const sinYaw = Math.sin(this.yaw);
     const cosYaw = Math.cos(this.yaw);
 
-    // Direction from target towards camera
+    // Camera sits behind the player: at yaw 0 it belongs on +Z and looks toward -Z.
+    // Keep the shoulder vector aligned with camera screen-right (+X at yaw 0), so
+    // keyboard, touch and gamepad movement all use the same world-space basis.
     this.scratchArmVec.set(
-      -sinYaw * cosPitch,
+      sinYaw * cosPitch,
       sinPitch,
-      -cosYaw * cosPitch,
+      cosYaw * cosPitch,
     ).normalize();
 
-    // Shoulder right offset perpendicular to arm
-    const normalX = -cosYaw;
-    const normalZ = sinYaw;
+    // Shoulder right offset perpendicular to the camera's forward direction.
+    const normalX = cosYaw;
+    const normalZ = -sinYaw;
     const sOffset = isInsideHall ? 0.0 : this.shoulderOffset;
 
     const desiredX = this.smoothTarget.x + this.scratchArmVec.x * targetDistance + normalX * sOffset;
