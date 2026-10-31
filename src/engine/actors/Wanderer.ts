@@ -804,7 +804,7 @@ export class Wanderer extends THREE.Group {
     // Named women of the wider world receive distinct long-hair silhouettes and crafted ornaments.
     if (this.resident === 'meilin' || this.resident === 'yue' || this.resident === 'sylva') {
       const hairMat = this.getCharacterHairMaterial();
-      const backHair = new THREE.Mesh(new THREE.SphereGeometry(0.12, 18, 14), hairMat);
+      const backHair = new THREE.Mesh(new THREE.SphereGeometry(0.14, 24, 18), hairMat);
       backHair.name = 'resident_long_hair';
       backHair.position.set(0, -0.13, -0.055);
       backHair.scale.set(0.98, 1.72, 0.86);
@@ -812,12 +812,30 @@ export class Wanderer extends THREE.Group {
       this.eyeGroup.add(backHair);
 
       for (const side of [-1, 1]) {
-        const lock = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.055, 0.42, 8), hairMat);
+        const lock = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.055, 0.42, 10), hairMat);
         lock.name = 'resident_hair_lock';
         lock.position.set(side * 0.125, -0.12, 0.015);
         lock.rotation.z = side * -0.12;
         lock.castShadow = true;
         this.eyeGroup.add(lock);
+
+        // Three tapered, curved locks per side break up the single-piece doll-hair silhouette.
+        for (let strand = 0; strand < 3; strand++) {
+          const offset = strand * 0.018;
+          const curve = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(side * (0.075 + offset), 0.08, -0.075),
+            new THREE.Vector3(side * (0.105 + offset), -0.12, -0.09),
+            new THREE.Vector3(side * (0.145 + offset), -0.38, -0.055),
+            new THREE.Vector3(side * (0.115 + offset), -0.66 - (strand % 2) * 0.07, 0.015 + offset),
+          ]);
+          const flowingLock = new THREE.Mesh(
+            new THREE.TubeGeometry(curve, 18, 0.012 + strand * 0.0015, 6, false),
+            hairMat,
+          );
+          flowingLock.name = 'resident_flowing_hair_strand';
+          flowingLock.castShadow = true;
+          this.eyeGroup.add(flowingLock);
+        }
       }
 
       const ornamentColor = this.resident === 'meilin' ? '#B77B65' : this.resident === 'yue' ? '#D6B86D' : '#8EAC75';
