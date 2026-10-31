@@ -31,6 +31,7 @@ function lazyWithRetry<P extends object>(
 }
 
 const WorldHost = lazyWithRetry(() => import('@/app/WorldHost'));
+const BabylonWorldPreview = lazyWithRetry(() => import('@/engine/babylon/BabylonWorldPreview'));
 
 const DesignKitScreen =
   import.meta.env.DEV || import.meta.env.VITE_ENABLE_KIT === '1'
@@ -99,6 +100,16 @@ export default function App() {
 
   const [accountOpen, setAccountOpen] = useState(() => Boolean(params?.get('account') === '1'));
   const sessionFailedMessage = useAuthStore((s) => s.sessionFailedMessage);
+
+  if (params?.get('babylon') === '1') {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<PearlBootScreen />}>
+          <BabylonWorldPreview />
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
 
   const showKit = Boolean(params?.get('kit') === '1' && DesignKitScreen);
   if (showKit && DesignKitScreen) {

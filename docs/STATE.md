@@ -329,3 +329,17 @@
 - Atmosphere support currently includes a CPU reference model, not the GPU scattering LUT pipeline. Clouds remain the existing layered heightfield/puff renderer with weather-responsive coverage and density; volumetric raymarching, cloud shadows, rain/snow systems and cloud-coupled god rays remain future work.
 - River ribbons are deterministic geometry data and are not yet connected to streamed flow tiles or the live water renderer. Lakes, refraction, planar reflections, underwater collision and waterfall spray/mist LOD remain future work.
 - The merged expansion branch's GitHub Actions validation passed: TypeScript, 94 automated tests, and production build. The world JS chunk remained approximately 1.02 MB minified, so code-splitting is still an optimisation task. Android and desktop visual/performance captures were not produced.
+
+
+## Babylon.js migration foundation (2026-11-01)
+- Selected Babylon.js as the target and sole renderer for the eventual Arkvoid runtime; React remains the UI layer and Supabase remains the persistence layer.
+- Pinned `@babylonjs/core` and `@babylonjs/loaders` to 9.33.1 and registered the official glTF loader.
+- Added isolated `/?babylon=1` engine preview using a Babylon WebGL runtime, a mobile-capped device-pixel ratio, touch camera controls, a floating sanctuary scene and visibility/resize-aware render lifecycle.
+- Kept the existing production Three.js route intact for this first migration slice because the current runtime contains roughly 100 Three-coupled engine TypeScript modules. Do not remove Three.js until renderer, world, locomotion, actors, effects, diagnostics and application flows are ported and verified.
+- Migration gates and the staged port order are documented in `docs/BABYLON_MIGRATION.md`.
+
+## Babylon migration remaining work / known issues
+- The Babylon preview is an isolated renderer validation scene, not the full Arkvoid world and not yet the production default.
+- The main world, all player/resident systems, effects, material/texture pipeline, metrics, composer and test suites still use Three.js and must be ported before cutover.
+- WebGPU is intentionally not enabled in this first slice; establish WebGL parity and real-device stability first, then add WebGPU as a separate capability path with a full engine rebuild fallback.
+- The Bun lockfile and final dependency removal must be regenerated during the final package-manager migration/cutover.
