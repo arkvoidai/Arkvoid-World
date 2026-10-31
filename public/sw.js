@@ -1,3 +1,4 @@
+/* global self, caches, fetch, URL, Response */
 const CACHE_PREFIX = 'arkvoid-world-';
 const SHELL_CACHE = CACHE_PREFIX + 'shell-v1';
 const RUNTIME_CACHE = CACHE_PREFIX + 'runtime-v1';
@@ -39,18 +40,20 @@ async function networkFirst(request) {
   }
 }
 
-async function staleWhileRevalidate(request, event) {
-  const cache = await caches.open(RUNTIME_CACHE);
-  const cached = await cache.match(request);
-  const fresh = fetch(request).then((response) => {
-    if (response.ok && response.type !== 'opaque') void cache.put(request, response.clone());
-    return response;
-  }).catch(() => null);
-  if (cached) {
-    event.waitUntil(fresh);
-    return cached;
-  }
-  return (await fresh) || new Response('', { status: 504 });
+function staleWhileRevalidate(request, event) {
+  const cachePromise = caches.open(RUNTIME_CACHE);
+  const fresh = cachePromise.then((cache) =>
+    fetch(request).then((response) => {
+      if (response.ok && response.type !== 'opaque') void cache.put(request, response.clone());
+      return response;
+    }),
+  ).catch(() => null);
+  // Extend the fetch event before the asynchronous cache lookup finishes.
+  event.waitUntil(fresh);
+  return cachePromise.then(async (cache) => {
+    const cached = await cache.match(request);
+    return cached || (await fresh) || new Response('', { status: 504 });
+  });
 }
 
 self.addEventListener('fetch', (event) => {
