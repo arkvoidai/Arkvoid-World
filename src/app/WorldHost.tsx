@@ -213,6 +213,44 @@ export default function WorldHost({
     return () => window.removeEventListener('arkvoid:npc-talk', handleNpcTalk);
   }, []);
 
+  useEffect(() => {
+    const isTextEntry = (target: Element | null): boolean =>
+      target instanceof HTMLElement &&
+      target.matches('input, textarea, select, [contenteditable="true"]');
+
+    const syncTextFocus = () => {
+      const engine = engineRef.current;
+      if (!engine) return;
+      if (isTextEntry(document.activeElement)) engine.pause('text-input');
+      else engine.resume('text-input');
+    };
+
+    const viewport = window.visualViewport;
+    const syncViewport = () => {
+      const height = viewport?.height ?? window.innerHeight;
+      const offsetTop = viewport?.offsetTop ?? 0;
+      document.documentElement.style.setProperty('--arkvoid-visual-height', `${Math.round(height)}px`);
+      document.documentElement.style.setProperty('--arkvoid-visual-offset-top', `${Math.round(offsetTop)}px`);
+    };
+
+    document.addEventListener('focusin', syncTextFocus);
+    document.addEventListener('focusout', () => window.setTimeout(syncTextFocus, 0));
+    window.addEventListener('resize', syncViewport, { passive: true });
+    viewport?.addEventListener('resize', syncViewport, { passive: true });
+    viewport?.addEventListener('scroll', syncViewport, { passive: true });
+    syncViewport();
+    syncTextFocus();
+
+    return () => {
+      document.removeEventListener('focusin', syncTextFocus);
+      window.removeEventListener('resize', syncViewport);
+      viewport?.removeEventListener('resize', syncViewport);
+      viewport?.removeEventListener('scroll', syncViewport);
+      document.documentElement.style.removeProperty('--arkvoid-visual-height');
+      document.documentElement.style.removeProperty('--arkvoid-visual-offset-top');
+    };
+  }, []);
+
   // Subscribe to auth state: on sign-out reset to gate
   useEffect(() => {
     const unsub = useAuthStore.subscribe((state, prevState) => {
@@ -474,6 +512,13 @@ export default function WorldHost({
 
       engine.register(governor);
       engine.register(showcase);
+      const activeElement = document.activeElement;
+      if (
+        activeElement instanceof HTMLElement &&
+        activeElement.matches('input, textarea, select, [contenteditable="true"]')
+      ) {
+        engine.pause('text-input');
+      }
       engine.start();
 
       if (audit) {
