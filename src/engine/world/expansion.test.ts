@@ -11,7 +11,6 @@ import {
   toWorld,
 } from './atlas/Coordinates.js';
 import {
-  BUILT_AREAS,
   BUILT_REGIONS,
   DATABASE_AREA_SEED,
   DATABASE_REGION_SEED,
