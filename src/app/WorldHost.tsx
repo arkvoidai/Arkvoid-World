@@ -57,7 +57,9 @@ function loadWorldRuntime(): Promise<WorldRuntime> {
       import('@/engine/core/Quality'),
       import('@/engine/world/ShowcaseScene'),
       import('@/engine/world/SceneAudit'),
-    ]).then(([engine, leak, presenter, governor, quality, showcase, audit]) => ({
+    ]).then(([engine, leak, presenter, governor, quality, showcase, audit]) => {
+      performance.mark?.('arkvoid:engine-chunk-loaded');
+      return {
       Engine: engine.Engine,
       runEngineLeakTest: leak.runEngineLeakTest,
       ScreenPresenter: presenter.ScreenPresenter,
@@ -66,7 +68,8 @@ function loadWorldRuntime(): Promise<WorldRuntime> {
       resolveEffectiveTier: quality.resolveEffectiveTier,
       ShowcaseWorldSystem: showcase.ShowcaseWorldSystem,
       runSceneAudit: audit.runSceneAudit,
-    }));
+      };
+    });
   }
   return worldRuntimePromise;
 }
@@ -233,8 +236,9 @@ export default function WorldHost({
       document.documentElement.style.setProperty('--arkvoid-visual-offset-top', `${Math.round(offsetTop)}px`);
     };
 
+    const handleFocusOut = () => window.setTimeout(syncTextFocus, 0);
     document.addEventListener('focusin', syncTextFocus);
-    document.addEventListener('focusout', () => window.setTimeout(syncTextFocus, 0));
+    document.addEventListener('focusout', handleFocusOut);
     window.addEventListener('resize', syncViewport, { passive: true });
     viewport?.addEventListener('resize', syncViewport, { passive: true });
     viewport?.addEventListener('scroll', syncViewport, { passive: true });
@@ -243,6 +247,7 @@ export default function WorldHost({
 
     return () => {
       document.removeEventListener('focusin', syncTextFocus);
+      document.removeEventListener('focusout', handleFocusOut);
       window.removeEventListener('resize', syncViewport);
       viewport?.removeEventListener('resize', syncViewport);
       viewport?.removeEventListener('scroll', syncViewport);
@@ -486,6 +491,7 @@ export default function WorldHost({
 
       engine.events.on('firstFrame', () => {
         if (!cancelled) {
+          performance.mark?.('arkvoid:first-world-frame');
           setFirstFrameReady(true);
           syncVignetteOverlay();
           if (import.meta.env.DEV && typeof window !== 'undefined') {
