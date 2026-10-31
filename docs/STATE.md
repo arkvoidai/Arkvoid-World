@@ -329,3 +329,37 @@
 - Atmosphere support currently includes a CPU reference model, not the GPU scattering LUT pipeline. Clouds remain the existing layered heightfield/puff renderer with weather-responsive coverage and density; volumetric raymarching, cloud shadows, rain/snow systems and cloud-coupled god rays remain future work.
 - River ribbons are deterministic geometry data and are not yet connected to streamed flow tiles or the live water renderer. Lakes, refraction, planar reflections, underwater collision and waterfall spray/mist LOD remain future work.
 - The merged expansion branch's GitHub Actions validation passed: TypeScript, 94 automated tests, and production build. The world JS chunk remained approximately 1.02 MB minified, so code-splitting is still an optimisation task. Android and desktop visual/performance captures were not produced.
+
+
+## Progressive boot and reliability hardening (2026-10-31 · PR branch)
+
+### Implemented on `perf/progressive-boot-hardening`
+
+- Replaced deprecated Rollup-style manual chunking with Vite 8/Rolldown `output.codeSplitting.groups`; introduced Gate, Awakening, HUD/sheets, UI, Supabase, Three.js, engine-core, actors, vegetation, FX and world-content groups, plus a Vite build manifest.
+- Deferred the Engine/Presenter/Showcase runtime behind a memoized dynamic loader. The Gate can paint without waiting for the first WebGL frame. Normal profiles request the engine at idle; data-saver, 2G/3G and conservative low-tier profiles wait until Begin. Awakening/Arrival/World transitions also request the runtime so returning users do not get stuck behind a Gate they will never see.
+- Converted Gate, Awakening, Arrival, world map, resident dialogue, Actors Lineup, and benchmark overlays to lazy-loaded components.
+- Restored the pearl HTML boot surface (`#FBFAF7`), added Supabase preconnect, restored viewport zoom, changed keyboard viewport mode to `resizes-content`, added first-paint/boot/engine/frame/interactive performance marks, and added a responsive CSS poster fallback. The poster phase follows the Arkvoid world clock and its `?time=` override.
+- Added an empty poster manifest plus founder export instructions for the eight WebP images. No image files were fabricated; the CSS fallback is used until approved exports are committed.
+- Restricted Geist and Instrument Serif to Latin WOFF2 files, applied `font-display: swap`, size-adjusted fallbacks, and preloaded the two fonts used by the boot/Gate.
+- Made TextureCatalog use asynchronous, URL-only lazy `import.meta.glob` discovery. AssetStore awaits catalog readiness while keeping procedural fallback materials, and mobile real-texture caps are 512 for non-low mobile tiers and 256 for low tiers; desktop remains 1024.
+- Added a versioned service worker with a cached offline shell, network-first navigation, stale-while-revalidate static assets and deferred activation. Added Vercel immutable static-asset and no-cache HTML/manifest/SW headers while retaining the existing security headers.
+- Changed `test` to discover all `src/**/*.test.ts` files rather than maintaining a fixed list; changed lint to treat warnings as errors. The repository tree contained 17 test files at the time this change was authored.
+- Added a frozen-Bun-lockfile CI workflow with typecheck, lint, test, collision checks, production build, gzip budgets and Lighthouse mobile assertions; added Lighthouse report upload.
+- Added bounded/deduplicated client error reporting, sampled Web Vitals reporting, a development performance snapshot, a calm React error boundary and quiet WebGL/runtime failure copy.
+- Connected resident dialogue UI to `npc-talk` and its `say` response contract. Corrected authenticated `llm_take` and `match_memories` RPC calls in the live Edge Function to use the user's JWT client and redeployed the function as version 2.
+- Added `docs/PERF_AUDIT.md` and `docs/QA_MATRIX.md`. They mark all physical-device and cross-browser measurements as NOT MEASURED / PENDING.
+
+### Validation state and outstanding work
+
+- No local checkout/browser session was available to execute typecheck, lint, unit tests, production build, gzip budget check, Lighthouse, Playwright, WebKit/Firefox, or physical-device tests before opening the PR. The new CI workflow is intended to run repository-side validation after PR creation; its status must be checked before merging.
+- No Android Chrome or iOS Safari session was available to validate keyboard resize behaviour. The app now listens to `visualViewport`, updates the canvas CSS height and pauses the engine while an editable field is focused; physical verification remains pending.
+- The Gate is poster-first, but the actual eight founder WebP exports and per-image size verification remain pending.
+- `ShowcaseWorldSystem.init()` still constructs large world content synchronously. P0–P4 time-sliced generation, 4 ms/6 ms phase budgets, shader warmup, one-texture upload enforcement from the scene build, and no-long-task acceptance have NOT been delivered yet.
+- The requested IndexedDB mesh buffer cache and optional bake script are not implemented.
+- Playwright smoke tests, WebKit/Firefox coverage, tab-hide/show interaction assertion, console allowlist, 10-viewport screenshot automation, responsive target-size/overlap/detent assertions, and screenshot artifacts remain pending.
+- The six-profile Lighthouse/trace/heap/frame metrics, measured top-five bottleneck ranking, 4G first-paint and can-move acceptance numbers remain NOT MEASURED. Source-level bottleneck hypotheses are listed in `docs/PERF_AUDIT.md`; they are not reported as measured rankings.
+- The repository currently has a single `bun.lock` and CI uses Bun frozen-lockfile install. Vercel's build log was not accessible to confirm its package-manager selection; this must be checked in Vercel before merging.
+- Brotli response encoding and production cache headers have not been verified against a deployed Vercel response.
+- The `GEMINI_API_KEY` Supabase Function secret and an authenticated end-to-end NPC conversation have not been verified. The old `mistral-npc` function remains deployed until the new path is verified.
+- GitHub required-status-check protection on `main` has not been enabled by this branch. A repository administrator must mark the CI job required after confirming its check name.
+- There is no audio module in the current source tree; therefore no audio chunk was created.
