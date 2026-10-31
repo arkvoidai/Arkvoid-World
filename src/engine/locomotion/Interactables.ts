@@ -6,7 +6,7 @@ import { sharedEngineBridge } from '@/state/worldBridgeStore';
 
 export interface Interactable {
   id: string;
-  kind: 'bell' | 'sit' | 'gate' | 'custom';
+  kind: 'bell' | 'sit' | 'custom';
   position: THREE.Vector3;
   radius: number;
   label: string;
