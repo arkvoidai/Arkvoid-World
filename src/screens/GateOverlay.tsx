@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Sheet } from '@/ui/Sheet';
 import { AccountSheet } from '@/ui/AccountSheet';
 import { useAuthStore } from '@/state/auth';
@@ -20,6 +20,11 @@ export function GateOverlay({
   const [legalSheetDoc, setLegalSheetDoc] = useState<'privacy' | 'terms' | null>(null);
   const [clickPending, setClickPending] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    performance.mark?.('arkvoid:interactive');
+  }, []);
+
   const status = useAuthStore((s) => s.status);
   const busy = isLoading || clickPending || status === 'loading';
 
@@ -41,6 +46,7 @@ export function GateOverlay({
       aria-label="Enter Arkvoid"
       className="pointer-events-none fixed inset-0 z-hud overflow-y-auto overscroll-contain select-none"
     >
+      <div aria-hidden="true" className="arkvoid-gate-poster absolute inset-0" />
       <div
         aria-hidden="true"
         className="absolute inset-0"
