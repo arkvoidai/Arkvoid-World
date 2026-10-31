@@ -181,8 +181,8 @@ test('Step 13: PlayerController edge damping and warning toast', () => {
     },
   });
 
-  // Teleport near Island A edge (radius 26m at angle 0 -> t > 0.93 at x = 24.8m)
-  controller.teleport(24.8, 0, 0);
+  // Teleport near the expanded Island A edge (38m radius; beyond the t = 0.93 walkable rim).
+  controller.teleport(36.0, 0, 0);
 
   const edgeInput: InputState = {
     moveX: 1.0,
