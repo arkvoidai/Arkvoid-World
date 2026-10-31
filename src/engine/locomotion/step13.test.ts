@@ -298,6 +298,22 @@ test('Camera view basis agrees with forward and right player movement', () => {
   rig.dispose();
 });
 
+test('Camera forward and screen-right remain aligned after a 90-degree orbit', () => {
+  const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.1, 1000);
+  const rig = new CameraRig(camera, mockPhoneDevice);
+  const player = new THREE.Vector3(4, 0, 7);
+  rig.yaw = Math.PI / 2;
+  rig.update(1 / 60, player, 0, 0, 0, 0, true);
+
+  assert.ok(camera.position.x > player.x, 'camera should remain behind the rotated forward direction');
+  const viewDirection = new THREE.Vector3();
+  camera.getWorldDirection(viewDirection);
+  assert.ok(viewDirection.x < -0.9, 'camera should look toward world -X at a quarter turn');
+  const screenRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+  assert.ok(screenRight.z < -0.9, 'screen-right should rotate with the camera toward world -Z');
+  rig.dispose();
+});
+
 test('Forward, backward, left and right inputs map to their expected world axes', () => {
   const cases = [
     { name: 'forward', moveX: 0, moveY: 1, axis: 'z', sign: -1 },
@@ -318,6 +334,30 @@ test('Forward, backward, left and right inputs map to their expected world axes'
       ? controller.position.x - start.x
       : controller.position.z - start.z;
     assert.ok(direction.sign * delta > 1, direction.name + ' should move along its intended world axis');
+    controller.dispose();
+  }
+});
+
+test('Camera-relative movement keeps its directions after a 90-degree orbit', () => {
+  const cases = [
+    { name: 'forward', moveX: 0, moveY: 1, axis: 'x', sign: -1 },
+    { name: 'backward', moveX: 0, moveY: -1, axis: 'x', sign: 1 },
+    { name: 'left', moveX: -1, moveY: 0, axis: 'z', sign: 1 },
+    { name: 'right', moveX: 1, moveY: 0, axis: 'z', sign: -1 },
+  ] as const;
+
+  for (const direction of cases) {
+    const controller = new PlayerController();
+    const start = controller.position.clone();
+    const input: InputState = {
+      moveX: direction.moveX, moveY: direction.moveY,
+      lookDeltaYaw: 0, lookDeltaPitch: 0, run: false, interact: false, cancel: false,
+    };
+    for (let i = 0; i < 90; i++) controller.update(1 / 60, input, Math.PI / 2);
+    const delta = direction.axis === 'x'
+      ? controller.position.x - start.x
+      : controller.position.z - start.z;
+    assert.ok(direction.sign * delta > 1, direction.name + ' should follow the camera-relative axis after rotation');
     controller.dispose();
   }
 });
