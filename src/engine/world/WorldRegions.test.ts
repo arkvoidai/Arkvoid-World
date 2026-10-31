@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   EXPANDED_REGIONS,
-  HOME_REGION_GATES,
   WorldRegions,
   expandedRegionAt,
   expandedRegionHeightAt,
@@ -25,16 +24,6 @@ test('Each new continent has a distinct biome and an analytic walkable surface',
   }
 });
 
-test('Home Reach has one portal per built continent', () => {
-  assert.equal(HOME_REGION_GATES.length, 3);
-  assert.deepEqual(HOME_REGION_GATES.map((gate) => gate.regionId), [
-    'veiled-peaks', 'capital-valley', 'primordial-forest',
-  ]);
-  for (const gate of HOME_REGION_GATES) {
-    assert.ok(Math.hypot(gate.position.x, gate.position.z) < 34);
-  }
-});
-
 test('Expanded region terrain participates in player collision and movement', () => {
   for (const region of EXPANDED_REGIONS) {
     const start = { x: region.center.x - 115, y: region.baseY, z: region.center.z + 125 };
@@ -47,7 +36,7 @@ test('Expanded region terrain participates in player collision and movement', ()
 });
 
 
-test('Only the selected continent is visible while Home Reach keeps its gates', () => {
+test('Only the selected continent is visible; travel is not represented by physical gates', () => {
   const world = new WorldRegions(true);
   try {
     for (const region of EXPANDED_REGIONS) {
@@ -64,9 +53,12 @@ test('Only the selected continent is visible while Home Reach keeps its gates', 
     for (const region of EXPANDED_REGIONS) {
       assert.equal(world.getObjectByName('Region_' + region.id)?.visible, false);
     }
-    assert.ok(world.getObjectByName('HomeGate_gate-veiled-peaks'));
-    assert.ok(world.getObjectByName('HomeGate_gate-capital-valley'));
-    assert.ok(world.getObjectByName('HomeGate_gate-primordial-forest'));
+    assert.equal(world.getObjectByName('HomeGate_gate-veiled-peaks'), undefined);
+    assert.equal(world.getObjectByName('HomeGate_gate-capital-valley'), undefined);
+    assert.equal(world.getObjectByName('HomeGate_gate-primordial-forest'), undefined);
+    assert.equal(world.getObjectByName('ReturnGate_veiled-peaks'), undefined);
+    assert.equal(world.getObjectByName('ReturnGate_capital-valley'), undefined);
+    assert.equal(world.getObjectByName('ReturnGate_primordial-forest'), undefined);
   } finally {
     world.dispose();
   }
