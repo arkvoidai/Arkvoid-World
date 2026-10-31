@@ -1,26 +1,16 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { Engine } from '@/engine/core/Engine';
-import {
-  type LeakTestReport,
-  runEngineLeakTest,
-} from '@/engine/core/leakTest';
-import { ScreenPresenter } from '@/engine/core/Presenter';
-import { QualityGovernor } from '@/engine/core/QualityGovernor';
-import {
-  loadUserQualityPreference,
-  resolveEffectiveTier,
-} from '@/engine/core/Quality';
 import type { BenchmarkReport } from '@/engine/core/Benchmark';
 import BenchmarkOverlay from '@/hud/BenchmarkOverlay';
-import { computePhaseVignetteStyle } from '@/engine/fx/Atmosphere';
-import { ShowcaseWorldSystem } from '@/engine/world/ShowcaseScene';
-import { runSceneAudit, type SceneAuditResult } from '@/engine/world/SceneAudit';
 import { DebugReadout } from '@/hud/DebugReadout';
 import {
-  type DeviceProfile,
   getImmediateDeviceProfile,
   resolveDeviceProfile,
+  type DeviceProfile,
 } from '@/lib/deviceProfile';
+import type { Engine } from '@/engine/core/Engine';
+import type { LeakTestReport } from '@/engine/core/leakTest';
+import type { SceneAuditResult } from '@/engine/world/SceneAudit';
+import type { ShowcaseWorldSystem } from '@/engine/world/ShowcaseScene';
 import { hourNow } from '@/lib/worldClock';
 import { sharedEngineBridge, useWorldBridgeStore } from '@/state/worldBridgeStore';
 import { WorldLoadingScreen } from '@/ui/WorldLoadingScreen';
@@ -45,6 +35,41 @@ const VisualReviewOverlay =
   import.meta.env.DEV || import.meta.env.VITE_ENABLE_REVIEW === '1'
     ? lazy(() => import('@/hud/VisualReviewOverlay'))
     : null;
+
+type WorldRuntime = {
+  Engine: typeof import('@/engine/core/Engine').Engine;
+  runEngineLeakTest: typeof import('@/engine/core/leakTest').runEngineLeakTest;
+  ScreenPresenter: typeof import('@/engine/core/Presenter').ScreenPresenter;
+  QualityGovernor: typeof import('@/engine/core/QualityGovernor').QualityGovernor;
+  loadUserQualityPreference: typeof import('@/engine/core/Quality').loadUserQualityPreference;
+  resolveEffectiveTier: typeof import('@/engine/core/Quality').resolveEffectiveTier;
+  ShowcaseWorldSystem: typeof import('@/engine/world/ShowcaseScene').ShowcaseWorldSystem;
+  runSceneAudit: typeof import('@/engine/world/SceneAudit').runSceneAudit;
+};
+let worldRuntimePromise: Promise<WorldRuntime> | null = null;
+function loadWorldRuntime(): Promise<WorldRuntime> {
+  if (!worldRuntimePromise) {
+    worldRuntimePromise = Promise.all([
+      import('@/engine/core/Engine'),
+      import('@/engine/core/leakTest'),
+      import('@/engine/core/Presenter'),
+      import('@/engine/core/QualityGovernor'),
+      import('@/engine/core/Quality'),
+      import('@/engine/world/ShowcaseScene'),
+      import('@/engine/world/SceneAudit'),
+    ]).then(([engine, leak, presenter, governor, quality, showcase, audit]) => ({
+      Engine: engine.Engine,
+      runEngineLeakTest: leak.runEngineLeakTest,
+      ScreenPresenter: presenter.ScreenPresenter,
+      QualityGovernor: governor.QualityGovernor,
+      loadUserQualityPreference: quality.loadUserQualityPreference,
+      resolveEffectiveTier: quality.resolveEffectiveTier,
+      ShowcaseWorldSystem: showcase.ShowcaseWorldSystem,
+      runSceneAudit: audit.runSceneAudit,
+    }));
+  }
+  return worldRuntimePromise;
+}
 
 declare global {
   interface Window {
@@ -91,6 +116,7 @@ export default function WorldHost({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const vignetteRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<Engine | null>(null);
+  const startEngineRef = useRef<(() => Promise<void>) | null>(null);
   const showcaseRef = useRef<ShowcaseWorldSystem | null>(null);
   const [firstFrameReady, setFirstFrameReady] = useState(false);
   const [splashMounted, setSplashMounted] = useState(true);
@@ -300,7 +326,10 @@ export default function WorldHost({
   const syncVignetteOverlay = useCallback(() => {
     const el = vignetteRef.current;
     if (!el) return;
-    el.style.background = computePhaseVignetteStyle(hourNow());
+    const hour = hourNow();
+    const phase = hour >= 5 && hour < 8 ? 'dawn' : hour >= 8 && hour < 17 ? 'day' : hour >= 17 && hour < 20 ? 'dusk' : 'night';
+    const tint = phase === 'dawn' ? '255,122,26' : phase === 'dusk' ? '124,92,255' : phase === 'night' ? '64,58,104' : '255,255,255';
+    el.style.background = `radial-gradient(ellipse at 50% 52%, rgba(${tint},0.065), transparent 68%)`;
   }, []);
 
   // Update the phase-tinted radial vignette at most once per second (1 Hz)
@@ -311,12 +340,10 @@ export default function WorldHost({
   }, [syncVignetteOverlay]);
 
   useEffect(() => {
-    if (!worldReady) return;
-    const timer = window.setTimeout(() => {
-      setSplashMounted(false);
-    }, 360);
+    if (!sessionReady || (viewMode !== 'gate' && !worldReady)) return;
+    const timer = window.setTimeout(() => setSplashMounted(false), 180);
     return () => window.clearTimeout(timer);
-  }, [worldReady]);
+  }, [sessionReady, viewMode, worldReady]);
 
   const handleCaptureFrame = useCallback((): string | null => {
     const eng = engineRef.current;
@@ -375,10 +402,10 @@ export default function WorldHost({
     let auditInterval: number | null = null;
     let auditSettleTimer: number | null = null;
 
-    const mountEngine = (device: DeviceProfile) => {
+    const mountEngine = (device: DeviceProfile, runtime: WorldRuntime) => {
       if (cancelled) return;
-      const presenter = new ScreenPresenter(device, probe || audit);
-      const engine = new Engine(hostEl, {
+      const presenter = new runtime.ScreenPresenter(device, probe || audit);
+      const engine = new runtime.Engine(hostEl, {
         device,
         presenter,
         bridge: sharedEngineBridge,
@@ -392,7 +419,7 @@ export default function WorldHost({
           ? (leaning as LeaningId)
           : undefined;
 
-      const showcase = new ShowcaseWorldSystem({
+      const showcase = new runtime.ShowcaseWorldSystem({
         reviewShots,
         actorsLineup: actors,
         playerForm: parsedForm,
@@ -401,16 +428,16 @@ export default function WorldHost({
       showcaseRef.current = showcase;
 
       // Determine initial quality tier
-      const pref = loadUserQualityPreference();
-      const initialTier = resolveEffectiveTier(pref, device);
-      const governor = new QualityGovernor(initialTier, (msg) => {
+      const pref = runtime.loadUserQualityPreference();
+      const initialTier = runtime.resolveEffectiveTier(pref, device);
+      const governor = new runtime.QualityGovernor(initialTier, (msg) => {
         setToastMessage(msg);
         setTimeout(() => setToastMessage(null), 5000);
       });
 
       const performAudit = () => {
         if (cancelled) return;
-        const res = runSceneAudit(
+        const res = runtime.runSceneAudit(
           engine.scene,
           showcase,
           engine.assets,
@@ -474,24 +501,62 @@ export default function WorldHost({
       }
     };
 
-    const initialDevice = getImmediateDeviceProfile();
+    let idleHandle: number | null = null;
+    let idleTimer: number | null = null;
+    let startPromise: Promise<void> | null = null;
 
-    if (import.meta.env.DEV && leakTest) {
-      void resolveDeviceProfile().then(async (resolvedDevice) => {
-        if (cancelled) return;
-        const report = await runEngineLeakTest(hostEl, resolvedDevice, 10);
-        if (typeof window !== 'undefined') {
-          window.__ARKVOID_LEAK_REPORT__ = report;
+    const startEngine = (): Promise<void> => {
+      if (startPromise) return startPromise;
+      startPromise = (async () => {
+        try {
+          const runtime = await loadWorldRuntime();
+          if (cancelled) return;
+          const initialDevice = getImmediateDeviceProfile();
+          if (import.meta.env.DEV && leakTest) {
+            const resolvedDevice = await resolveDeviceProfile();
+            if (cancelled) return;
+            const report = await runtime.runEngineLeakTest(hostEl, resolvedDevice, 10);
+            if (typeof window !== 'undefined') window.__ARKVOID_LEAK_REPORT__ = report;
+            mountEngine(resolvedDevice, runtime);
+          } else {
+            mountEngine(initialDevice, runtime);
+            void resolveDeviceProfile();
+          }
+        } catch (error) {
+          console.error('[Arkvoid] World runtime failed to load.', error);
+          if (!cancelled) setAwakeningError('The world could not open. Please try again.');
+          throw error;
         }
-        mountEngine(resolvedDevice);
-      });
-    } else {
-      mountEngine(initialDevice);
-      void resolveDeviceProfile();
+      })();
+      return startPromise;
+    };
+    startEngineRef.current = startEngine;
+
+    const connection = (typeof navigator !== 'undefined'
+      ? (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection
+      : undefined);
+    const connectionIsConstrained = Boolean(
+      connection?.saveData || ['slow-2g', '2g', '3g'].includes(connection?.effectiveType ?? ''),
+    );
+    const immediateProfile = getImmediateDeviceProfile();
+    const deviceIsConstrained = immediateProfile.gpuTier <= 1 || immediateProfile.deviceMemory <= 3;
+    const shouldWaitForBegin = connectionIsConstrained || deviceIsConstrained;
+
+    if (!shouldWaitForBegin) {
+      if ('requestIdleCallback' in window) {
+        idleHandle = window.requestIdleCallback(() => { void startEngine().catch(() => undefined); }, { timeout: 2500 });
+      } else {
+        idleTimer = window.setTimeout(() => { void startEngine().catch(() => undefined); }, 1200);
+      }
+    } else if (viewMode === 'awakening' || viewMode === 'arrival' || viewMode === 'world') {
+      void startEngine().catch(() => undefined);
     }
 
     const cleanupEngine = () => {
       cancelled = true;
+      if (idleHandle !== null && 'cancelIdleCallback' in window) window.cancelIdleCallback(idleHandle);
+      if (idleTimer !== null) window.clearTimeout(idleTimer);
+      if (startEngineRef.current === startEngine) startEngineRef.current = null;
       if (benchInterval) {
         window.clearInterval(benchInterval);
         benchInterval = null;
@@ -530,7 +595,7 @@ export default function WorldHost({
       <div
         ref={hostRef}
         data-testid="world-canvas-host"
-        className="h-full w-full"
+        className="arkvoid-world-canvas h-full w-full"
       />
 
       {/* Phase-graded soft radial vignette overlay (pointer-events: none, updated <= 1 Hz, no CSS filter on canvas) */}
@@ -563,9 +628,9 @@ export default function WorldHost({
       )}
 
       {/* Step 15 Gate Overlay: Welcome over live showcase world */}
-      {viewMode === 'gate' && worldReady && (
+      {viewMode === 'gate' && sessionReady && (
         <GateOverlay
-          onBegin={handleBegin}
+          onBegin={async () => { await startEngineRef.current?.(); await handleBegin(); }}
           onAccountResolved={handleAccountResolved}
           isLoading={isBeginning}
           errorMessage={awakeningError}
