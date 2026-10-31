@@ -251,6 +251,7 @@ export class Engine {
     canvas.addEventListener('webglcontextrestored', onContextRestored);
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', onVisibilityChange);
+      if (document.hidden) this.pause('visibility-hidden');
     }
 
     this.disposables.add(() => {
