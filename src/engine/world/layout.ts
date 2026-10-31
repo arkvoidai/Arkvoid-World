@@ -193,7 +193,7 @@ export const ISLANDS: Record<IslandKey, IslandDef> = {
     id: 'dawn-terrace',
     name: 'Dawn Terrace',
     center: { x: 0, y: 0, z: 0 },
-    radius: 26,
+    radius: 38,
     topY: 0,
     reachable: true,
     seed: 104729,
