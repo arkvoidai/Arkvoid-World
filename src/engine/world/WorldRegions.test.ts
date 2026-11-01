@@ -47,23 +47,25 @@ test('Expanded region terrain participates in player collision and movement', ()
 });
 
 
-test('Only the selected continent is visible while Home Reach keeps its gates', () => {
+test('Distant continents are built on demand and only the active one is visible', () => {
   const world = new WorldRegions(true);
   try {
     for (const region of EXPANDED_REGIONS) {
-      assert.equal(world.getObjectByName('Region_' + region.id)?.visible, false);
+      assert.equal(world.getObjectByName('Region_' + region.id), undefined);
     }
+    assert.ok(world.getObjectByName('HomeGate_gate-veiled-peaks'));
+    assert.ok(world.getObjectByName('HomeGate_gate-capital-valley'));
+    assert.ok(world.getObjectByName('HomeGate_gate-primordial-forest'));
     world.setActiveRegion('veiled-peaks');
     assert.equal(world.getObjectByName('Region_veiled-peaks')?.visible, true);
-    assert.equal(world.getObjectByName('Region_capital-valley')?.visible, false);
-    assert.equal(world.getObjectByName('Region_primordial-forest')?.visible, false);
+    assert.equal(world.getObjectByName('Region_capital-valley'), undefined);
+    assert.equal(world.getObjectByName('Region_primordial-forest'), undefined);
     world.setActiveRegion('primordial-forest');
     assert.equal(world.getObjectByName('Region_primordial-forest')?.visible, true);
     assert.equal(world.getObjectByName('Region_veiled-peaks')?.visible, false);
     world.setActiveRegion('home-reach');
-    for (const region of EXPANDED_REGIONS) {
-      assert.equal(world.getObjectByName('Region_' + region.id)?.visible, false);
-    }
+    assert.equal(world.getObjectByName('Region_veiled-peaks')?.visible, false);
+    assert.equal(world.getObjectByName('Region_primordial-forest')?.visible, false);
     assert.ok(world.getObjectByName('HomeGate_gate-veiled-peaks'));
     assert.ok(world.getObjectByName('HomeGate_gate-capital-valley'));
     assert.ok(world.getObjectByName('HomeGate_gate-primordial-forest'));
