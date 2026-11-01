@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { DeviceProfile } from '@/lib/deviceProfile';
 import { expandedRegionHeightAt, EXPANDED_REGIONS } from '@/engine/world/WorldRegions';
+import { terrainHeight } from '@/engine/world/terrain';
 import type { ExpandedRegionId, WorldRegions } from '@/engine/world/WorldRegions';
 
 export interface RegionAssetStreamerOptions {
@@ -8,9 +9,18 @@ export interface RegionAssetStreamerOptions {
   device: DeviceProfile;
 }
 
+export type StreamedRegionId = ExpandedRegionId | 'home-reach';
+
+export interface RegionModelPlacement {
+  readonly x: number;
+  readonly z: number;
+  readonly targetHeight: number;
+  readonly yaw: number;
+}
+
 export interface RegionModelSpec {
   readonly id: string;
-  readonly regionId: ExpandedRegionId;
+  readonly regionId: StreamedRegionId;
   readonly fileName: string;
   readonly estimatedBytes: number;
   readonly minGpuTier: 0 | 1 | 2 | 3;
@@ -20,6 +30,9 @@ export interface RegionModelSpec {
   readonly offsetZ: number;
   readonly targetHeight: number;
   readonly yaw: number;
+  readonly placements?: readonly RegionModelPlacement[];
+  readonly maxPhoneInstances?: number;
+  readonly maxDesktopInstances?: number;
 }
 
 const MB = 1024 * 1024;
@@ -33,6 +46,38 @@ function trimTrailingSlashes(value: string): string {
 }
 
 export const REGION_MODEL_MANIFEST: readonly RegionModelSpec[] = [
+  {
+    id: 'home-island-pines', regionId: 'home-reach',
+    fileName: 'pine_tree.glb', estimatedBytes: 4_937_388,
+    minGpuTier: 1, priority: 110, offsetX: 0, offsetZ: 0,
+    targetHeight: 14, yaw: 0,
+    maxPhoneInstances: 4, maxDesktopInstances: 8,
+    placements: [
+      { x: -29, z: -16, targetHeight: 14, yaw: 0.25 },
+      { x: -30, z: 14, targetHeight: 15.5, yaw: 1.15 },
+      { x: -18, z: 29, targetHeight: 13, yaw: 2.0 },
+      { x: 5, z: 32, targetHeight: 14.5, yaw: 0.7 },
+      { x: 25, z: 24, targetHeight: 15, yaw: 2.6 },
+      { x: 33, z: 0, targetHeight: 13.5, yaw: 1.8 },
+      { x: 20, z: -27, targetHeight: 14, yaw: 3.1 },
+      { x: -8, z: -33, targetHeight: 13.5, yaw: 4.5 },
+    ],
+  },
+  {
+    id: 'home-island-rock-outcrops', regionId: 'home-reach',
+    fileName: 'rock.glb', estimatedBytes: 4_298_376,
+    minGpuTier: 2, priority: 90, offsetX: 0, offsetZ: 0,
+    targetHeight: 5, yaw: 0,
+    maxPhoneInstances: 1, maxDesktopInstances: 6,
+    placements: [
+      { x: -34, z: -3, targetHeight: 5.5, yaw: 0.2 },
+      { x: -23, z: -27, targetHeight: 4.5, yaw: 1.3 },
+      { x: -9, z: 34, targetHeight: 5.0, yaw: 2.2 },
+      { x: 17, z: 31, targetHeight: 4.8, yaw: 0.7 },
+      { x: 34, z: 13, targetHeight: 5.8, yaw: 2.9 },
+      { x: 31, z: -17, targetHeight: 4.6, yaw: 4.1 },
+    ],
+  },
   {
     id: 'veiled-peaks-great-mountain', regionId: 'veiled-peaks',
     fileName: 'great_mountain.glb', estimatedBytes: 2_800_452,
@@ -84,7 +129,7 @@ export function buildPublicRegionAssetUrl(supabaseUrl: string, fileName: string)
 }
 
 export function selectRegionModels(
-  regionId: ExpandedRegionId,
+  regionId: StreamedRegionId,
   device: DeviceProfile,
 ): readonly RegionModelSpec[] {
   if (device.isSoftwareGl || device.gpuTier === 0) return [];
@@ -194,9 +239,9 @@ export class RegionAssetStreamer {
   private readonly supabaseUrl: string;
   private readonly device: DeviceProfile;
   private readonly controllers = new Set<AbortController>();
-  private readonly resident = new Map<ExpandedRegionId, ResidentRegionAssets>();
-  private loadingRegion: ExpandedRegionId | null = null;
-  private requestedRegion: ExpandedRegionId | null = null;
+  private readonly resident = new Map<StreamedRegionId, ResidentRegionAssets>();
+  private loadingRegion: StreamedRegionId | null = null;
+  private requestedRegion: StreamedRegionId | null = null;
   private usageClock = 0;
   private disposed = false;
 
@@ -206,7 +251,7 @@ export class RegionAssetStreamer {
     this.device = options.device;
   }
 
-  activate(regionId: ExpandedRegionId): void {
+  activate(regionId: StreamedRegionId): void {
     if (this.disposed || !this.supabaseUrl) return;
     this.requestedRegion = regionId;
     const cached = this.resident.get(regionId);
@@ -218,7 +263,7 @@ export class RegionAssetStreamer {
     void this.loadRegion(regionId);
   }
 
-  private async loadRegion(regionId: ExpandedRegionId): Promise<void> {
+  private async loadRegion(regionId: StreamedRegionId): Promise<void> {
     if (this.disposed || this.loadingRegion) return;
     this.loadingRegion = regionId;
     const region = this.worldRegions.getRegionGroup(regionId);
@@ -252,45 +297,65 @@ export class RegionAssetStreamer {
           continue;
         }
 
-        const triangles = countRegionModelTriangles(source);
-        if (triangles <= 0 || totalTriangles + triangles > triangleBudget) {
-          disposeModelResources(source);
-          continue;
-        }
-
         const definition = this.getRegionDefinition(regionId);
         if (!definition) {
           disposeModelResources(source);
           continue;
         }
-        const fitted = fitRegionModel(
-          source,
-          {
-            x: definition.center.x + spec.offsetX,
-            y: this.getGroundHeight(definition.center.x + spec.offsetX, definition.center.z + spec.offsetZ, definition.baseY),
-            z: definition.center.z + spec.offsetZ,
-          },
-          spec.targetHeight,
-          spec.yaw,
-        );
-        if (!fitted) {
+        const placements = spec.placements ?? [{
+          x: definition.center.x + spec.offsetX,
+          z: definition.center.z + spec.offsetZ,
+          targetHeight: spec.targetHeight,
+          yaw: spec.yaw,
+        }];
+        const triangleCount = countRegionModelTriangles(source);
+        const instanceLimit = this.device.deviceClass === 'phone'
+          ? (spec.maxPhoneInstances ?? 1)
+          : (spec.maxDesktopInstances ?? placements.length);
+        const affordableInstances = triangleCount > 0
+          ? Math.floor((triangleBudget - totalTriangles) / triangleCount)
+          : 0;
+        const instanceCount = Math.min(placements.length, instanceLimit, affordableInstances);
+        if (instanceCount <= 0) {
           disposeModelResources(source);
           continue;
         }
-        fitted.name = spec.id;
-        fitted.traverse((object) => {
-          const mesh = object as THREE.Mesh;
-          if (!mesh.isMesh) return;
-          const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-          const opaque = materials.some((material) => !material.transparent);
-          mesh.castShadow = opaque;
-          mesh.receiveShadow = opaque;
-          mesh.frustumCulled = true;
-        });
-        group.add(fitted);
-        totalTriangles += triangles;
+
+        let fittedCount = 0;
+        for (let instanceIndex = 0; instanceIndex < instanceCount; instanceIndex++) {
+          const placement = placements[instanceIndex]!;
+          const sceneForPlacement = instanceIndex === 0 ? source : source.clone(true);
+          const fitted = fitRegionModel(
+            sceneForPlacement,
+            {
+              x: placement.x,
+              y: this.getGroundHeight(regionId, placement.x, placement.z, definition.baseY),
+              z: placement.z,
+            },
+            placement.targetHeight,
+            placement.yaw,
+          );
+          if (!fitted) continue;
+          fitted.name = spec.id + '_' + (instanceIndex + 1);
+          fitted.traverse((object) => {
+            const mesh = object as THREE.Mesh;
+            if (!mesh.isMesh) return;
+            const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+            const opaque = materials.some((material) => !material.transparent);
+            mesh.castShadow = opaque;
+            mesh.receiveShadow = opaque;
+            mesh.frustumCulled = true;
+          });
+          group.add(fitted);
+          totalTriangles += triangleCount;
+          fittedCount++;
+          if (!group.parent) region.add(group);
+        }
+        if (fittedCount === 0) {
+          disposeModelResources(source);
+          continue;
+        }
         resident.loadedBytes += spec.estimatedBytes;
-        if (!group.parent) region.add(group);
       }
 
       if (group.children.length === 0) {
@@ -341,18 +406,21 @@ export class RegionAssetStreamer {
     }
   }
 
-  private getRegionDefinition(regionId: ExpandedRegionId) {
+  private getRegionDefinition(regionId: StreamedRegionId): { center: { x: number; z: number }; baseY: number } | undefined {
+    if (regionId === 'home-reach') return { center: { x: 0, z: 0 }, baseY: 0 };
     return EXPANDED_REGIONS.find((region) => region.id === regionId);
   }
 
-  private getGroundHeight(x: number, z: number, fallback: number): number {
-    return expandedRegionHeightAt(x, z) ?? fallback;
+  private getGroundHeight(regionId: StreamedRegionId, x: number, z: number, fallback: number): number {
+    return regionId === 'home-reach'
+      ? terrainHeight(x, z)
+      : expandedRegionHeightAt(x, z) ?? fallback;
   }
 
   private evictInactiveRegions(): void {
     const capacity = this.device.deviceClass === 'phone' || this.device.isSoftwareGl ? 1 : 2;
     while (this.resident.size > capacity) {
-      let oldestId: ExpandedRegionId | null = null;
+      let oldestId: StreamedRegionId | null = null;
       let oldestUsage = Infinity;
       for (const [id, entry] of this.resident) {
         if (id === this.requestedRegion || id === this.loadingRegion) continue;
