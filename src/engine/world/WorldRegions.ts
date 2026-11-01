@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { terrainHeight } from '@/engine/world/terrain';
 
 export type ExpandedRegionId = 'veiled-peaks' | 'capital-valley' | 'primordial-forest';
 
@@ -243,128 +242,19 @@ function addForestLandmarks(group: THREE.Group, region: ExpandedRegionDefinition
 }
 
 
-export const HOME_REGION_GATES = [
-  { id: 'gate-veiled-peaks', regionId: 'veiled-peaks' as const, position: { x: -10, y: 0.2, z: -22 }, label: 'Veiled Peaks' },
-  { id: 'gate-capital-valley', regionId: 'capital-valley' as const, position: { x: 0, y: 0.2, z: -27 }, label: 'Capital Valley' },
-  { id: 'gate-primordial-forest', regionId: 'primordial-forest' as const, position: { x: 10, y: 0.2, z: -22 }, label: 'Primordial Forest' },
-] as const;
-
-function addPortalArch(group: THREE.Group, x: number, y: number, z: number, tint: string, scale = 1): void {
-  const stone = new THREE.MeshStandardMaterial({ color: '#8B8172', roughness: 0.84 });
-  const glow = new THREE.MeshBasicMaterial({ color: tint, transparent: true, opacity: 0.82, side: THREE.DoubleSide });
-  for (const side of [-1, 1]) {
-    const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.72 * scale, 6.2 * scale, 0.82 * scale), stone);
-    pillar.position.set(x + side * 3.2 * scale, y + 3.1 * scale, z);
-    pillar.castShadow = true;
-    group.add(pillar);
-    const capital = new THREE.Mesh(new THREE.BoxGeometry(1.1 * scale, 0.45 * scale, 1.15 * scale), stone);
-    capital.position.set(x + side * 3.2 * scale, y + 6.3 * scale, z);
-    group.add(capital);
-  }
-  const arch = new THREE.Mesh(new THREE.TorusGeometry(3.2 * scale, 0.2 * scale, 10, 48, Math.PI), stone);
-  arch.position.set(x, y + 6.2 * scale, z);
-  group.add(arch);
-  const veil = new THREE.Mesh(new THREE.PlaneGeometry(5.9 * scale, 5.8 * scale), glow);
-  veil.position.set(x, y + 3.05 * scale, z + 0.08 * scale);
-  group.add(veil);
-  const step = new THREE.Mesh(new THREE.BoxGeometry(8.2 * scale, 0.24 * scale, 3.4 * scale), stone);
-  step.position.set(x, y + 0.12 * scale, z + 1.2 * scale);
-  group.add(step);
-}
-
-
-function addHomeIslandAssets(root: THREE.Group, phone: boolean): void {
-  // Instanced perimeter pines make the expanded home island read as a real place
-  // without adding per-tree draw calls or blocking on remote GLB downloads.
-  const count = phone ? 12 : 22;
-  const trunkGeometry = new THREE.CylinderGeometry(0.22, 0.42, 7.5, 6);
-  const crownGeometry = new THREE.ConeGeometry(2.35, 9.5, 7);
-  const trunkMaterial = new THREE.MeshStandardMaterial({ color: '#594735', roughness: 0.96 });
-  const crownMaterial = new THREE.MeshStandardMaterial({ color: '#34543D', roughness: 0.92 });
-  const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, count);
-  const crowns = new THREE.InstancedMesh(crownGeometry, crownMaterial, count);
-  const dummy = new THREE.Object3D();
-
-  for (let i = 0; i < count; i++) {
-    const angle = (i / count) * Math.PI * 2 + 0.13;
-    const radius = 23.5 + (i % 4) * 1.25;
-    const x = Math.cos(angle) * radius;
-    const z = Math.sin(angle) * radius;
-    const y = terrainHeight(x, z);
-    const scale = 0.78 + ((i * 17) % 7) * 0.075;
-    dummy.position.set(x, y + 3.7 * scale, z);
-    dummy.rotation.set(0, angle * 0.7, 0);
-    dummy.scale.set(scale, scale, scale);
-    dummy.updateMatrix();
-    trunks.setMatrixAt(i, dummy.matrix);
-    dummy.position.y += 5.5 * scale;
-    dummy.scale.set(scale * 1.12, scale, scale * 1.12);
-    dummy.updateMatrix();
-    crowns.setMatrixAt(i, dummy.matrix);
-  }
-  trunks.instanceMatrix.needsUpdate = true;
-  crowns.instanceMatrix.needsUpdate = true;
-  trunks.castShadow = !phone;
-  crowns.castShadow = !phone;
-  trunks.receiveShadow = true;
-  crowns.receiveShadow = true;
-  root.add(trunks, crowns);
-
-  // A small ring of exposed stone outcrops breaks up the previously empty rim.
-  const rockCount = phone ? 8 : 14;
-  const rockGeometry = new THREE.DodecahedronGeometry(1, 0);
-  const rockMaterial = new THREE.MeshStandardMaterial({ color: '#77766F', roughness: 0.94 });
-  const rocks = new THREE.InstancedMesh(rockGeometry, rockMaterial, rockCount);
-  for (let i = 0; i < rockCount; i++) {
-    const angle = (i / rockCount) * Math.PI * 2 + 0.42;
-    const radius = 27.0 + (i % 3) * 0.55;
-    const x = Math.cos(angle) * radius;
-    const z = Math.sin(angle) * radius;
-    dummy.position.set(x, terrainHeight(x, z) + 0.45, z);
-    dummy.rotation.set(angle * 0.3, angle, angle * 0.18);
-    dummy.scale.set(1.1 + (i % 3) * 0.35, 0.7 + (i % 2) * 0.35, 0.9 + (i % 4) * 0.18);
-    dummy.updateMatrix();
-    rocks.setMatrixAt(i, dummy.matrix);
-  }
-  rocks.instanceMatrix.needsUpdate = true;
-  rocks.castShadow = !phone;
-  rocks.receiveShadow = true;
-  root.add(rocks);
-
-  // Three carved standing stones form a readable landmark on the outer terrace.
-  const stoneGeometry = new THREE.CylinderGeometry(0.52, 0.78, 5.8, 7);
-  const stoneMaterial = new THREE.MeshStandardMaterial({ color: '#A79B86', roughness: 0.88 });
-  for (const [x, z, yaw] of [[-24, -12, 0.2], [25, -10, -0.35], [0, 27, 0.7]] as const) {
-    const marker = new THREE.Mesh(stoneGeometry, stoneMaterial);
-    marker.position.set(x, terrainHeight(x, z) + 2.9, z);
-    marker.rotation.y = yaw;
-    marker.castShadow = !phone;
-    marker.receiveShadow = true;
-    root.add(marker);
-  }
-}
 
 export class WorldRegions extends THREE.Group {
   private readonly materials: THREE.Material[] = [];
   private readonly regionGroups = new Map<ExpandedRegionId, THREE.Group>();
   private activeRegionId: ExpandedRegionId | 'home-reach' | null = null;
   private readonly phone: boolean;
+  private readonly homeAssetsGroup = new THREE.Group();
   constructor(phone = false) {
     super();
     this.phone = phone;
     this.name = 'ArkvoidDistinctRegions';
-    const gateColours: Record<ExpandedRegionId, string> = {
-      'veiled-peaks': '#C5E7F1',
-      'capital-valley': '#E5B96D',
-      'primordial-forest': '#8EBE83',
-    };
-    for (const gate of HOME_REGION_GATES) {
-      const portal = new THREE.Group();
-      portal.name = 'HomeGate_' + gate.id;
-      addPortalArch(portal, gate.position.x, gate.position.y, gate.position.z, gateColours[gate.regionId], 0.82);
-      this.add(portal);
-    }
-    addHomeIslandAssets(this, phone);
+    this.homeAssetsGroup.name = 'HomeReachAuthoredAssets';
+    this.add(this.homeAssetsGroup);
     // Expanded continents are created only when entered. This removes their terrain,
     // foliage and landmark construction from the first-world boot path.
     this.setActiveRegion('home-reach');
@@ -378,12 +268,6 @@ export class WorldRegions extends THREE.Group {
 
     const area = new THREE.Group();
     area.name = 'Region_' + region.id;
-    const returnY = expandedRegionHeightAt(region.center.x - 90, region.center.z + 110) ?? region.baseY;
-    const returnPortal = new THREE.Group();
-    returnPortal.name = 'ReturnGate_' + region.id;
-    addPortalArch(returnPortal, region.center.x - 90, returnY, region.center.z + 110, '#E8D8B0', 1.05);
-    area.add(returnPortal);
-
     const geometry = createTerrain(region, this.phone);
     const material = new THREE.MeshStandardMaterial({
       color: region.palette.ground,
@@ -407,14 +291,15 @@ export class WorldRegions extends THREE.Group {
     return area;
   }
 
-  getRegionGroup(regionId: ExpandedRegionId): THREE.Group | undefined {
-    return this.buildRegion(regionId);
+  getRegionGroup(regionId: ExpandedRegionId | 'home-reach'): THREE.Group | undefined {
+    return regionId === 'home-reach' ? this.homeAssetsGroup : this.buildRegion(regionId);
   }
 
   setActiveRegion(regionId: ExpandedRegionId | 'home-reach'): void {
     if (this.activeRegionId === regionId) return;
     if (regionId !== 'home-reach') this.buildRegion(regionId);
     this.activeRegionId = regionId;
+    this.homeAssetsGroup.visible = regionId === 'home-reach';
     for (const [id, group] of this.regionGroups) group.visible = regionId === id;
   }
 
