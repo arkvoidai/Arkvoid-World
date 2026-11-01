@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { DeviceProfile } from '@/lib/deviceProfile';
+import { expandedRegionHeightAt, EXPANDED_REGIONS } from '@/engine/world/WorldRegions';
 import type { ExpandedRegionId, WorldRegions } from '@/engine/world/WorldRegions';
 
 export interface RegionAssetStreamerOptions {
@@ -71,7 +72,7 @@ export const REGION_MODEL_MANIFEST: readonly RegionModelSpec[] = [
 ];
 
 export function buildPublicRegionAssetUrl(supabaseUrl: string, fileName: string): string | null {
-  const base = supabaseUrl.trim().replace(/\\/+$/, '');
+  const base = supabaseUrl.trim().replace(/\/+$/, '');
   if (!base) return null;
   return base + '/storage/v1/object/public/' + STORAGE_BUCKET + '/' + encodeURIComponent(fileName);
 }
@@ -192,7 +193,7 @@ export class RegionAssetStreamer {
 
   constructor(worldRegions: WorldRegions, options: RegionAssetStreamerOptions) {
     this.worldRegions = worldRegions;
-    this.supabaseUrl = options.supabaseUrl.trim().replace(/\\/+$/, '');
+    this.supabaseUrl = options.supabaseUrl.trim().replace(/\/+$/, '');
     this.device = options.device;
   }
 
@@ -332,11 +333,11 @@ export class RegionAssetStreamer {
   }
 
   private getRegionDefinition(regionId: ExpandedRegionId) {
-    return this.worldRegions.getRegionDefinition(regionId);
+    return EXPANDED_REGIONS.find((region) => region.id === regionId);
   }
 
   private getGroundHeight(x: number, z: number, fallback: number): number {
-    return this.worldRegions.getGroundHeight(x, z) ?? fallback;
+    return expandedRegionHeightAt(x, z) ?? fallback;
   }
 
   private evictInactiveRegions(): void {
