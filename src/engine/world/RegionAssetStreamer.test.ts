@@ -32,7 +32,15 @@ test('public Supabase model URLs encode object names and never require a secret 
   assert.equal(buildPublicRegionAssetUrl('', 'great_mountain.glb'), null);
 });
 
-test('model selection fits device download budgets and region identity', () => {
+test('model selection fits device download budgets, including the home island', () => {
+  const homePhone = selectRegionModels('home-reach', profile('phone', 1));
+  assert.deepEqual(homePhone.map((asset) => asset.fileName), ['pine_tree.glb']);
+  assert.equal(homePhone[0]?.placements?.length, 8);
+  assert.equal(homePhone[0]?.maxPhoneInstances, 4);
+
+  const homeDesktop = selectRegionModels('home-reach', profile('desktop', 2));
+  assert.deepEqual(homeDesktop.map((asset) => asset.fileName), ['pine_tree.glb', 'rock.glb']);
+
   const phone = selectRegionModels('veiled-peaks', profile('phone', 1));
   assert.deepEqual(phone.map((asset) => asset.fileName), ['great_mountain.glb']);
 
@@ -59,10 +67,10 @@ test('model selection fits device download budgets and region identity', () => {
   assert.deepEqual(selectRegionModels('veiled-peaks', profile('desktop', 0, true)), []);
 });
 
-test('all seven uploaded GLBs are represented in the regional manifest', () => {
-  assert.equal(REGION_MODEL_MANIFEST.length, 7);
+test('all seven uploaded GLBs are reused across the home island and distant regions', () => {
+  assert.equal(new Set(REGION_MODEL_MANIFEST.map((asset) => asset.fileName)).size, 7);
   assert.deepEqual(
-    REGION_MODEL_MANIFEST.map((asset) => asset.fileName).sort(),
+    [...new Set(REGION_MODEL_MANIFEST.map((asset) => asset.fileName))].sort(),
     [
       'chinese_temple__sacred_peak_shrine.glb',
       'cliff_rock_boulder_field.glb',
