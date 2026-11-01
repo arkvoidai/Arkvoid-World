@@ -97,7 +97,11 @@ body,
   min-height: 100dvh;
   margin: 0;
   padding: 0;
-  background-color: #fbfaf7;
+  background-color: #1d3036;
+  background-image:
+    radial-gradient(ellipse at 48% 36%, rgba(127, 164, 165, 0.16) 0%, transparent 48%),
+    radial-gradient(ellipse at 16% 84%, rgba(93, 122, 119, 0.15) 0%, transparent 42%),
+    linear-gradient(155deg, #253d43 0%, #1d3036 56%, #18282f 100%);
   color: var(--color-ink);
   font-family:
     'Geist Variable',
@@ -146,18 +150,19 @@ body,
   }
 }
 
-/* First paint uses the same deep dusk tone as the world canvas to prevent a white flash. */
+/* Atmospheric fallback matches the WebGL sky; no bright ivory frame during hand-off. */
 .arkvoid-loading-screen {
   display: grid;
   width: 100%;
   min-height: 100dvh;
   place-items: center;
   overflow: hidden;
-  color: #26231e;
+  color: #f4f1e9;
   background:
-    radial-gradient(circle at 50% 44%, rgba(219, 196, 169, 0.16) 0%, transparent 38%),
-    radial-gradient(circle at 18% 82%, rgba(224, 219, 208, 0.16) 0%, transparent 42%),
-    linear-gradient(155deg, #fffefa 0%, #f8f6f1 56%, #f0eee8 100%);
+    radial-gradient(ellipse at 50% 34%, rgba(144, 181, 178, 0.30) 0%, transparent 42%),
+    radial-gradient(ellipse at 16% 82%, rgba(108, 139, 135, 0.20) 0%, transparent 44%),
+    radial-gradient(ellipse at 84% 18%, rgba(192, 158, 116, 0.12) 0%, transparent 36%),
+    linear-gradient(155deg, #29464b 0%, #20363c 55%, #182a31 100%);
 }
 .arkvoid-loading-content {
   display: flex;
@@ -173,7 +178,7 @@ body,
   height: 58px;
   margin-bottom: 8px;
   place-items: center;
-  border: 1px solid rgba(54, 49, 41, 0.12);
+  border: 1px solid rgba(234, 237, 224, 0.18);
   border-radius: 50%;
 }
 .arkvoid-loader-orbit::before,
@@ -181,15 +186,15 @@ body,
   position: absolute;
   inset: 5px;
   border: 1px solid transparent;
-  border-top-color: rgba(151, 125, 91, 0.78);
-  border-right-color: rgba(151, 125, 91, 0.18);
+  border-top-color: rgba(217, 194, 155, 0.82);
+  border-right-color: rgba(217, 194, 155, 0.22);
   border-radius: 50%;
   content: "";
   animation: arkvoid-orbit 3.8s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
 }
 .arkvoid-loader-orbit::after {
   inset: 12px;
-  border-top-color: rgba(93, 88, 78, 0.34);
+  border-top-color: rgba(226, 230, 222, 0.34);
   border-right-color: transparent;
   animation-duration: 5.4s;
   animation-direction: reverse;
@@ -198,20 +203,20 @@ body,
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #ad8b63;
-  box-shadow: 0 0 12px rgba(173, 139, 99, 0.28);
+  background: #d0b58b;
+  box-shadow: 0 0 12px rgba(208, 181, 139, 0.32);
   animation: arkvoid-core-pulse 2.8s ease-in-out infinite;
 }
 .arkvoid-loading-wordmark {
   padding-left: 0.34em;
-  color: rgba(38, 35, 30, 0.84);
+  color: rgba(244, 241, 233, 0.88);
   font-family: 'Geist Variable', sans-serif;
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.34em;
 }
 .arkvoid-loading-caption {
-  color: rgba(58, 54, 47, 0.55);
+  color: rgba(226, 230, 222, 0.62);
   font-size: 12px;
   letter-spacing: 0.025em;
 }
@@ -221,14 +226,14 @@ body,
   margin-top: 8px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(61, 55, 46, 0.11);
+  background: rgba(234, 237, 224, 0.16);
 }
 .arkvoid-loading-track span {
   display: block;
   width: 42%;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #a88965, #d6c2a5);
+  background: linear-gradient(90deg, #a98f6b, #e2d2b4);
   animation: arkvoid-loading-sweep 2.1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 @keyframes arkvoid-orbit {
