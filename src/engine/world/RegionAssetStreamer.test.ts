@@ -5,6 +5,7 @@ import type { DeviceProfile } from '../../lib/deviceProfile.js';
 import {
   REGION_MODEL_MANIFEST,
   buildPublicRegionAssetUrl,
+  countRegionModelTriangles,
   fitRegionModel,
   selectRegionModels,
 } from './RegionAssetStreamer.js';
@@ -100,4 +101,14 @@ test('GLB normalization grounds the model and applies a deterministic target hei
       (child.material as THREE.Material).dispose();
     }
   });
+});
+
+
+test('triangle accounting includes every GPU-instanced copy', () => {
+  const geometry = new THREE.BoxGeometry(1, 1, 1);
+  const material = new THREE.MeshBasicMaterial();
+  const instances = new THREE.InstancedMesh(geometry, material, 4);
+  assert.equal(countRegionModelTriangles(instances), 48);
+  geometry.dispose();
+  material.dispose();
 });

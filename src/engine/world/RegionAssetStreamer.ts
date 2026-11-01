@@ -60,7 +60,7 @@ export const REGION_MODEL_MANIFEST: readonly RegionModelSpec[] = [
   {
     id: 'primordial-forest-rock', regionId: 'primordial-forest',
     fileName: 'rock.glb', estimatedBytes: 4_298_376,
-    minGpuTier: 2, priority: 100, offsetX: 210, offsetZ: 160,
+    minGpuTier: 2, priority: 100, offsetX: 245, offsetZ: -165,
     targetHeight: 56, yaw: 0.3,
   },
   {
@@ -111,7 +111,10 @@ export function countRegionModelTriangles(root: THREE.Object3D): number {
     const index = mesh.geometry.getIndex();
     const available = index ? index.count : position.count;
     const drawCount = Math.min(available, mesh.geometry.drawRange.count);
-    triangles += Math.floor(drawCount / 3);
+    const instances = (mesh as THREE.InstancedMesh).isInstancedMesh
+      ? (mesh as THREE.InstancedMesh).count
+      : 1;
+    triangles += Math.floor(drawCount / 3) * instances;
   });
   return triangles;
 }
