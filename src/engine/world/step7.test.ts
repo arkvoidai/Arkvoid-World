@@ -53,10 +53,10 @@ test('Step 7 Terrain: gradient, slope, and walkable boundary', () => {
   const gradCliff = terrainGradient(0, 25.5);
   assert.equal(gradCliff.slopeDeg > 20.0, true);
 
-  // Walkable boundary ends at t = 0.93
+  // Walkable boundary ends at t = 0.93 on the expanded 36 m home island.
   assert.equal(isWalkableTerrain(0, 10), true);
   assert.equal(isWalkableTerrain(0, 23.5), true);
-  assert.equal(isWalkableTerrain(0, 25.5), false);
+  assert.equal(isWalkableTerrain(0, 34.5), false);
 });
 
 test('Step 7 Collision: slope blocking over 40 deg and stair step-ups', () => {

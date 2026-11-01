@@ -142,10 +142,12 @@ export class Engine {
       powerPreference: 'high-performance',
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.setClearColor('#8FA8AC', 1);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
 
     this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color('#8FA8AC');
     this.camera = new THREE.PerspectiveCamera(52, 1, 0.25, 45000);
 
     this.ctx = {

@@ -62,3 +62,12 @@ A phone can review PRs, manage issues, upload small GLBs and test the preview. B
 - **E:** Expand the asset set only after desktop and real-phone visual/performance captures pass.
 
 Free licences do not guarantee a coherent art direction. Curate one visual style before adding large numbers of props.
+
+
+## Active Supabase GLB source
+
+The current prototype uses the public Supabase Storage bucket arkvoid-assets as a pinned remote source for authored hero models. Its seven registered objects are: great_mountain.glb, pine_tree.glb, pine_tree (1).glb, chinese_temple__sacred_peak_shrine.glb, cliff_rock_boulder_field.glb, delal_bridge_zakho.glb and rock.glb. This is a public bucket, so every object is downloadable by anyone who has its URL. Do not store private, unreleased or confidential assets in it.
+
+The client constructs public object URLs from the configured VITE_SUPABASE_URL and the bucket name; it does not use a service-role key or any server secret. Models are fetched only on region entry, not during initial boot. Selection uses explicit per-device download budgets, a region triangle budget and an LRU residency cap. The procedural geometry remains visible if an asset is unavailable, malformed or too expensive.
+
+The 33.5 MB sacred shrine is restricted to high-tier desktop devices. The phone path intentionally uses only small landmark assets and keeps the full procedural scene as fallback. This is an initial integration: the models' exact topology, license provenance, pivots and texture payloads still need an offline asset-validation pass before production distribution.

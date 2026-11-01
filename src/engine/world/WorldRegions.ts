@@ -242,84 +242,64 @@ function addForestLandmarks(group: THREE.Group, region: ExpandedRegionDefinition
 }
 
 
-export const HOME_REGION_GATES = [
-  { id: 'gate-veiled-peaks', regionId: 'veiled-peaks' as const, position: { x: -10, y: 0.2, z: -22 }, label: 'Veiled Peaks' },
-  { id: 'gate-capital-valley', regionId: 'capital-valley' as const, position: { x: 0, y: 0.2, z: -27 }, label: 'Capital Valley' },
-  { id: 'gate-primordial-forest', regionId: 'primordial-forest' as const, position: { x: 10, y: 0.2, z: -22 }, label: 'Primordial Forest' },
-] as const;
-
-function addPortalArch(group: THREE.Group, x: number, y: number, z: number, tint: string, scale = 1): void {
-  const stone = new THREE.MeshStandardMaterial({ color: '#8B8172', roughness: 0.84 });
-  const glow = new THREE.MeshBasicMaterial({ color: tint, transparent: true, opacity: 0.82, side: THREE.DoubleSide });
-  for (const side of [-1, 1]) {
-    const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.72 * scale, 6.2 * scale, 0.82 * scale), stone);
-    pillar.position.set(x + side * 3.2 * scale, y + 3.1 * scale, z);
-    pillar.castShadow = true;
-    group.add(pillar);
-    const capital = new THREE.Mesh(new THREE.BoxGeometry(1.1 * scale, 0.45 * scale, 1.15 * scale), stone);
-    capital.position.set(x + side * 3.2 * scale, y + 6.3 * scale, z);
-    group.add(capital);
-  }
-  const arch = new THREE.Mesh(new THREE.TorusGeometry(3.2 * scale, 0.2 * scale, 10, 48, Math.PI), stone);
-  arch.position.set(x, y + 6.2 * scale, z);
-  group.add(arch);
-  const veil = new THREE.Mesh(new THREE.PlaneGeometry(5.9 * scale, 5.8 * scale), glow);
-  veil.position.set(x, y + 3.05 * scale, z + 0.08 * scale);
-  group.add(veil);
-  const step = new THREE.Mesh(new THREE.BoxGeometry(8.2 * scale, 0.24 * scale, 3.4 * scale), stone);
-  step.position.set(x, y + 0.12 * scale, z + 1.2 * scale);
-  group.add(step);
-}
 
 export class WorldRegions extends THREE.Group {
   private readonly materials: THREE.Material[] = [];
   private readonly regionGroups = new Map<ExpandedRegionId, THREE.Group>();
+  private activeRegionId: ExpandedRegionId | 'home-reach' | null = null;
+  private readonly phone: boolean;
+  private readonly homeAssetsGroup = new THREE.Group();
   constructor(phone = false) {
     super();
+    this.phone = phone;
     this.name = 'ArkvoidDistinctRegions';
-    const gateColours: Record<ExpandedRegionId, string> = {
-      'veiled-peaks': '#C5E7F1',
-      'capital-valley': '#E5B96D',
-      'primordial-forest': '#8EBE83',
-    };
-    for (const gate of HOME_REGION_GATES) {
-      const portal = new THREE.Group();
-      portal.name = 'HomeGate_' + gate.id;
-      addPortalArch(portal, gate.position.x, gate.position.y, gate.position.z, gateColours[gate.regionId], 0.82);
-      this.add(portal);
-    }
-    for (const region of EXPANDED_REGIONS) {
-      const area = new THREE.Group();
-      area.name = 'Region_' + region.id;
-      const returnY = expandedRegionHeightAt(region.center.x - 90, region.center.z + 110) ?? region.baseY;
-      const returnPortal = new THREE.Group();
-      returnPortal.name = 'ReturnGate_' + region.id;
-      addPortalArch(returnPortal, region.center.x - 90, returnY, region.center.z + 110, '#E8D8B0', 1.05);
-      area.add(returnPortal);
-      const geometry = createTerrain(region, phone);
-      const material = new THREE.MeshStandardMaterial({
-        color: region.palette.ground,
-        roughness: region.id === 'capital-valley' ? 0.92 : 0.98,
-        metalness: 0.02,
-        flatShading: false,
-      });
-      this.materials.push(material);
-      const ground = new THREE.Mesh(geometry, material);
-      ground.name = 'WalkableTerrain_' + region.id;
-      ground.receiveShadow = true;
-      ground.castShadow = true;
-      area.add(ground);
-      addInstancedForest(area, region, phone);
-      if (region.id === 'veiled-peaks') addMountainLandmarks(area, region);
-      if (region.id === 'capital-valley') addCapitalLandmarks(area, region);
-      if (region.id === 'primordial-forest') addForestLandmarks(area, region);
-      this.regionGroups.set(region.id, area);
-      this.add(area);
-    }
+    this.homeAssetsGroup.name = 'HomeReachAuthoredAssets';
+    this.add(this.homeAssetsGroup);
+    // Expanded continents are created only when entered. This removes their terrain,
+    // foliage and landmark construction from the first-world boot path.
     this.setActiveRegion('home-reach');
   }
 
+  private buildRegion(regionId: ExpandedRegionId): THREE.Group | undefined {
+    const existing = this.regionGroups.get(regionId);
+    if (existing) return existing;
+    const region = EXPANDED_REGIONS.find((entry) => entry.id === regionId);
+    if (!region) return undefined;
+
+    const area = new THREE.Group();
+    area.name = 'Region_' + region.id;
+    const geometry = createTerrain(region, this.phone);
+    const material = new THREE.MeshStandardMaterial({
+      color: region.palette.ground,
+      roughness: region.id === 'capital-valley' ? 0.92 : 0.98,
+      metalness: 0.02,
+      flatShading: false,
+    });
+    this.materials.push(material);
+    const ground = new THREE.Mesh(geometry, material);
+    ground.name = 'WalkableTerrain_' + region.id;
+    ground.receiveShadow = true;
+    ground.castShadow = true;
+    area.add(ground);
+    addInstancedForest(area, region, this.phone);
+    if (region.id === 'veiled-peaks') addMountainLandmarks(area, region);
+    if (region.id === 'capital-valley') addCapitalLandmarks(area, region);
+    if (region.id === 'primordial-forest') addForestLandmarks(area, region);
+
+    this.regionGroups.set(region.id, area);
+    this.add(area);
+    return area;
+  }
+
+  getRegionGroup(regionId: ExpandedRegionId | 'home-reach'): THREE.Group | undefined {
+    return regionId === 'home-reach' ? this.homeAssetsGroup : this.buildRegion(regionId);
+  }
+
   setActiveRegion(regionId: ExpandedRegionId | 'home-reach'): void {
+    if (this.activeRegionId === regionId) return;
+    if (regionId !== 'home-reach') this.buildRegion(regionId);
+    this.activeRegionId = regionId;
+    this.homeAssetsGroup.visible = regionId === 'home-reach';
     for (const [id, group] of this.regionGroups) group.visible = regionId === id;
   }
 
