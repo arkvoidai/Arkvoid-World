@@ -75,9 +75,9 @@ test('Distant continents are built on demand and only the active one is visible'
     world.setActiveRegion('home-reach');
     assert.equal(world.getObjectByName('Region_veiled-peaks')?.visible, false);
     assert.equal(world.getObjectByName('Region_primordial-forest')?.visible, false);
-    assert.ok(world.getObjectByName('HomeGate_gate-veiled-peaks'));
-    assert.ok(world.getObjectByName('HomeGate_gate-capital-valley'));
-    assert.ok(world.getObjectByName('HomeGate_gate-primordial-forest'));
+    assert.equal(world.getObjectByName('HomeGate_gate-veiled-peaks'), undefined);
+    assert.equal(world.getObjectByName('HomeGate_gate-capital-valley'), undefined);
+    assert.equal(world.getObjectByName('HomeGate_gate-primordial-forest'), undefined);
   } finally {
     world.dispose();
   }
