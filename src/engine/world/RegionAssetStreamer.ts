@@ -26,6 +26,12 @@ const MB = 1024 * 1024;
 const STORAGE_BUCKET = 'arkvoid-assets';
 const UP = new THREE.Vector3(0, 1, 0);
 
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return value.slice(0, end);
+}
+
 export const REGION_MODEL_MANIFEST: readonly RegionModelSpec[] = [
   {
     id: 'veiled-peaks-great-mountain', regionId: 'veiled-peaks',
@@ -72,7 +78,7 @@ export const REGION_MODEL_MANIFEST: readonly RegionModelSpec[] = [
 ];
 
 export function buildPublicRegionAssetUrl(supabaseUrl: string, fileName: string): string | null {
-  const base = supabaseUrl.trim().replace(/\/+$/, '');
+  const base = trimTrailingSlashes(supabaseUrl);
   if (!base) return null;
   return base + '/storage/v1/object/public/' + STORAGE_BUCKET + '/' + encodeURIComponent(fileName);
 }
@@ -196,7 +202,7 @@ export class RegionAssetStreamer {
 
   constructor(worldRegions: WorldRegions, options: RegionAssetStreamerOptions) {
     this.worldRegions = worldRegions;
-    this.supabaseUrl = options.supabaseUrl.trim().replace(/\/+$/, '');
+    this.supabaseUrl = trimTrailingSlashes(options.supabaseUrl);
     this.device = options.device;
   }
 
