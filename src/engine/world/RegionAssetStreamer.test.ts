@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import type { DeviceProfile } from '@/lib/deviceProfile';
+import type { DeviceProfile } from '../../lib/deviceProfile.js';
 import {
   REGION_MODEL_MANIFEST,
   buildPublicRegionAssetUrl,
@@ -97,7 +97,7 @@ test('GLB normalization grounds the model and applies a deterministic target hei
     const child = object as THREE.Mesh;
     if (child.isMesh) {
       child.geometry.dispose();
-      child.material.dispose();
+      (child.material as THREE.Material).dispose();
     }
   });
 });
