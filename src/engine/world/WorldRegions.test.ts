@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   EXPANDED_REGIONS,
-  HOME_REGION_GATES,
   WorldRegions,
   expandedRegionAt,
   expandedRegionHeightAt,
@@ -25,13 +24,23 @@ test('Each new continent has a distinct biome and an analytic walkable surface',
   }
 });
 
-test('Home Reach has one portal per built continent', () => {
-  assert.equal(HOME_REGION_GATES.length, 3);
-  assert.deepEqual(HOME_REGION_GATES.map((gate) => gate.regionId), [
-    'veiled-peaks', 'capital-valley', 'primordial-forest',
-  ]);
-  for (const gate of HOME_REGION_GATES) {
-    assert.ok(Math.hypot(gate.position.x, gate.position.z) < 34);
+test('Home Reach has no inter-region portal gates and exposes an authored asset anchor', () => {
+  const world = new WorldRegions(true);
+  try {
+    const homeAssets = world.getRegionGroup('home-reach');
+    assert.equal(homeAssets?.name, 'HomeReachAuthoredAssets');
+    assert.equal(homeAssets?.visible, true);
+    const portalNames: string[] = [];
+    world.traverse((object) => {
+      if (object.name.includes('HomeGate_') || object.name.includes('ReturnGate_')) portalNames.push(object.name);
+    });
+    assert.deepEqual(portalNames, []);
+    world.setActiveRegion('veiled-peaks');
+    assert.equal(homeAssets?.visible, false);
+    world.setActiveRegion('home-reach');
+    assert.equal(homeAssets?.visible, true);
+  } finally {
+    world.dispose();
   }
 });
 
@@ -53,9 +62,9 @@ test('Distant continents are built on demand and only the active one is visible'
     for (const region of EXPANDED_REGIONS) {
       assert.equal(world.getObjectByName('Region_' + region.id), undefined);
     }
-    assert.ok(world.getObjectByName('HomeGate_gate-veiled-peaks'));
-    assert.ok(world.getObjectByName('HomeGate_gate-capital-valley'));
-    assert.ok(world.getObjectByName('HomeGate_gate-primordial-forest'));
+    assert.equal(world.getObjectByName('HomeGate_gate-veiled-peaks'), undefined);
+    assert.equal(world.getObjectByName('HomeGate_gate-capital-valley'), undefined);
+    assert.equal(world.getObjectByName('HomeGate_gate-primordial-forest'), undefined);
     world.setActiveRegion('veiled-peaks');
     assert.equal(world.getObjectByName('Region_veiled-peaks')?.visible, true);
     assert.equal(world.getObjectByName('Region_capital-valley'), undefined);
