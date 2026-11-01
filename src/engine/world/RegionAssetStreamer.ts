@@ -133,9 +133,11 @@ export function selectRegionModels(
   device: DeviceProfile,
 ): readonly RegionModelSpec[] {
   if (device.isSoftwareGl || device.gpuTier === 0) return [];
-  const byteBudget = device.deviceClass === 'phone'
-    ? (device.gpuTier >= 2 ? 8 * MB : 3.5 * MB)
-    : (device.gpuTier >= 3 ? 48 * MB : device.gpuTier >= 2 ? 18 * MB : 8 * MB);
+  const byteBudget = regionId === 'home-reach' && device.deviceClass === 'phone'
+    ? 6 * MB
+    : device.deviceClass === 'phone'
+      ? (device.gpuTier >= 2 ? 8 * MB : 3.5 * MB)
+      : (device.gpuTier >= 3 ? 48 * MB : device.gpuTier >= 2 ? 18 * MB : 8 * MB);
   let selectedBytes = 0;
   const selected: RegionModelSpec[] = [];
   const candidates = REGION_MODEL_MANIFEST
