@@ -24,7 +24,7 @@ import { LifeSystem } from '@/engine/fx/Life';
 import { REVIEW_SHOTS } from '@/engine/world/reviewShots';
 import { SkyDome } from '@/engine/world/SkyDome';
 import { FarMountainRanges } from '@/engine/world/FarMountainRanges';
-import { WorldRegions, EXPANDED_REGIONS, HOME_REGION_GATES, expandedRegionAt, expandedRegionHeightAt, type ExpandedRegionId } from '@/engine/world/WorldRegions';
+import { WorldRegions, EXPANDED_REGIONS, expandedRegionAt, expandedRegionHeightAt, type ExpandedRegionId } from '@/engine/world/WorldRegions';
 import { RegionAssetStreamer } from '@/engine/world/RegionAssetStreamer';
 import { SUPABASE_URL } from '@/config/public';
 import { DiscoveryTracker, discoverableAreaAt } from '@/engine/world/atlas';
@@ -97,6 +97,9 @@ export class ShowcaseWorldSystem implements System {
   private atmosphere: Atmosphere | null = null;
   private worldGroup: THREE.Group | null = null;
   private islands: IslandLandformMesh[] = [];
+  private pendingIslandKeys: Array<'B' | 'C' | 'S'> = [];
+  private deferredIslandTimer: number | null = null;
+  private unsubscribeFirstFrame: (() => void) | null = null;
   private spires: DistantSpires | null = null;
   private plazaInlayMat: THREE.MeshBasicMaterial | null = null;
   private fog: THREE.Fog | null = null;
@@ -368,7 +371,6 @@ export class ShowcaseWorldSystem implements System {
     this.worldGroup = new THREE.Group();
     this.worldGroup.name = 'ArkvoidIslandsAndArchitecture';
 
-    const islandKeys = ['A', 'B', 'C', 'S'] as const;
     const isPhone = ctx.device.deviceClass === 'phone';
     this.worldRegions = new WorldRegions(isPhone);
     this.worldGroup.add(this.worldRegions);
@@ -377,13 +379,15 @@ export class ShowcaseWorldSystem implements System {
       device: ctx.device,
     });
     this.lastActiveRegionId = null;
-    for (const key of islandKeys) {
-      const landform = new IslandLandformMesh(key, ctx.assets, {
-        isPhone,
-      });
-      this.islands.push(landform);
-      this.worldGroup.add(landform);
-    }
+    const homeLandform = new IslandLandformMesh('A', ctx.assets, { isPhone });
+    this.islands.push(homeLandform);
+    this.worldGroup.add(homeLandform);
+    this.pendingIslandKeys = ['B', 'C', 'S'];
+    this.unsubscribeFirstFrame = ctx.events.on('firstFrame', () => {
+      this.unsubscribeFirstFrame?.();
+      this.unsubscribeFirstFrame = null;
+      this.buildNextDeferredIsland(ctx, isPhone);
+    });
 
     // Plaza Inlay Rings on Island A (concentric rings + 12 radial rays)
     this.plazaInlayMat = new THREE.MeshBasicMaterial({
@@ -584,44 +588,6 @@ export class ShowcaseWorldSystem implements System {
         this.playerController?.setState('idle');
       };
       window.addEventListener('arkvoid:npc-close', this.npcDialogueCloseHandler);
-    }
-
-    // Three distinct world gates connect Home Reach to three fully walkable continents.
-    for (const gate of HOME_REGION_GATES) {
-      const destination = EXPANDED_REGIONS.find((region) => region.id === gate.regionId);
-      if (!destination) continue;
-      this.interactables.register({
-        id: gate.id,
-        kind: 'gate',
-        position: new THREE.Vector3(gate.position.x, gate.position.y, gate.position.z),
-        radius: 5.4,
-        label: destination.name,
-        verb: 'Enter',
-        enabled: () => !this.playerController!.isLocked(),
-        onInteract: () => {
-          const x = destination.center.x - 115;
-          const z = destination.center.z + 125;
-          const y = expandedRegionHeightAt(x, z) ?? destination.baseY;
-          this.playerController!.teleport(x, y, z, 0);
-          this.localPlayer?.setAnimationState('idle', 0.2);
-          ctx.events.emit('toast', { message: 'Arrived in ' + destination.name });
-        },
-      });
-      this.interactables.register({
-        id: 'return-' + gate.id,
-        kind: 'gate',
-        position: new THREE.Vector3(destination.center.x - 90, expandedRegionHeightAt(destination.center.x - 90, destination.center.z + 110) ?? destination.baseY, destination.center.z + 110),
-        radius: 8.5,
-        label: 'the Home Reach gate',
-        verb: 'Return to',
-        enabled: () => !this.playerController!.isLocked(),
-        onInteract: () => {
-          const homeY = heightAt(0, 14) ?? 0;
-          this.playerController!.teleport(0, homeY, 14, Math.PI);
-          this.localPlayer?.setAnimationState('idle', 0.2);
-          ctx.events.emit('toast', { message: 'Returned to Home Reach' });
-        },
-      });
     }
 
     const residents = [
@@ -904,7 +870,7 @@ export class ShowcaseWorldSystem implements System {
     if (this.lastActiveRegionId !== activeRegionId) {
       this.lastActiveRegionId = activeRegionId;
       this.worldRegions?.setActiveRegion(activeRegionId);
-      if (activeRegion) this.regionAssetStreamer?.activate(activeRegion.id);
+      this.regionAssetStreamer?.activate(activeRegionId);
     }
     const climate = activeRegion?.id === 'veiled-peaks'
       ? { temperature: 0.12, moisture: 0.84, snowAllowed: true }
@@ -1079,6 +1045,25 @@ export class ShowcaseWorldSystem implements System {
     }
   }
 
+  private buildNextDeferredIsland(ctx: EngineContext, isPhone: boolean): void {
+    const key = this.pendingIslandKeys.shift();
+    if (!key || !this.worldGroup) {
+      this.deferredIslandTimer = null;
+      return;
+    }
+    const landform = new IslandLandformMesh(key, ctx.assets, { isPhone });
+    this.islands.push(landform);
+    this.worldGroup.add(landform);
+    if (this.pendingIslandKeys.length > 0 && typeof window !== 'undefined') {
+      this.deferredIslandTimer = window.setTimeout(() => {
+        this.deferredIslandTimer = null;
+        this.buildNextDeferredIsland(ctx, isPhone);
+      }, 100);
+    } else {
+      this.deferredIslandTimer = null;
+    }
+  }
+
   private updateShowcaseCamera(dt: number, ctx: EngineContext): void {
     if (this.railController.isPlaying()) {
       this.railController.update(dt, ctx.camera);
@@ -1241,6 +1226,13 @@ export class ShowcaseWorldSystem implements System {
 
   dispose(): void {
     this.railController.stop();
+    this.unsubscribeFirstFrame?.();
+    this.unsubscribeFirstFrame = null;
+    if (this.deferredIslandTimer !== null && typeof window !== 'undefined') {
+      window.clearTimeout(this.deferredIslandTimer);
+      this.deferredIslandTimer = null;
+    }
+    this.pendingIslandKeys = [];
     if (this.npcDialogueCloseHandler && typeof window !== 'undefined') {
       window.removeEventListener('arkvoid:npc-close', this.npcDialogueCloseHandler);
       this.npcDialogueCloseHandler = null;
