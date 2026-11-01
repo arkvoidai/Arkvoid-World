@@ -326,7 +326,7 @@ export class RegionAssetStreamer {
         let fittedCount = 0;
         for (let instanceIndex = 0; instanceIndex < instanceCount; instanceIndex++) {
           const placement = placements[instanceIndex]!;
-          const sceneForPlacement = instanceIndex === 0 ? source : source.clone(true);
+          const sceneForPlacement = source.clone(true);
           const fitted = fitRegionModel(
             sceneForPlacement,
             {
