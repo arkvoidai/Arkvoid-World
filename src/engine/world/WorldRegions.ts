@@ -274,6 +274,7 @@ function addPortalArch(group: THREE.Group, x: number, y: number, z: number, tint
 export class WorldRegions extends THREE.Group {
   private readonly materials: THREE.Material[] = [];
   private readonly regionGroups = new Map<ExpandedRegionId, THREE.Group>();
+  private activeRegionId: ExpandedRegionId | 'home-reach' | null = null;
   constructor(phone = false) {
     super();
     this.name = 'ArkvoidDistinctRegions';
@@ -319,7 +320,13 @@ export class WorldRegions extends THREE.Group {
     this.setActiveRegion('home-reach');
   }
 
+  getRegionGroup(regionId: ExpandedRegionId): THREE.Group | undefined {
+    return this.regionGroups.get(regionId);
+  }
+
   setActiveRegion(regionId: ExpandedRegionId | 'home-reach'): void {
+    if (this.activeRegionId === regionId) return;
+    this.activeRegionId = regionId;
     for (const [id, group] of this.regionGroups) group.visible = regionId === id;
   }
 

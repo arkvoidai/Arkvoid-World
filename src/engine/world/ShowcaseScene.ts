@@ -24,7 +24,9 @@ import { LifeSystem } from '@/engine/fx/Life';
 import { REVIEW_SHOTS } from '@/engine/world/reviewShots';
 import { SkyDome } from '@/engine/world/SkyDome';
 import { FarMountainRanges } from '@/engine/world/FarMountainRanges';
-import { WorldRegions, EXPANDED_REGIONS, HOME_REGION_GATES, expandedRegionAt, expandedRegionHeightAt } from '@/engine/world/WorldRegions';
+import { WorldRegions, EXPANDED_REGIONS, HOME_REGION_GATES, expandedRegionAt, expandedRegionHeightAt, type ExpandedRegionId } from '@/engine/world/WorldRegions';
+import { RegionAssetStreamer } from '@/engine/world/RegionAssetStreamer';
+import { SUPABASE_URL } from '@/config/public';
 import { DiscoveryTracker, discoverableAreaAt } from '@/engine/world/atlas';
 import { WeatherController } from '@/engine/world/sky/Weather';
 import { worldMinute } from '@/lib/worldClock';
@@ -83,6 +85,8 @@ export class ShowcaseWorldSystem implements System {
   private cloudSea: CloudSea | null = null;
   private farMountains: FarMountainRanges | null = null;
   private worldRegions: WorldRegions | null = null;
+  private regionAssetStreamer: RegionAssetStreamer | null = null;
+  private lastActiveRegionId: ExpandedRegionId | 'home-reach' | null = null;
   private discoveryTracker: DiscoveryTracker | null = null;
   private expansionInspector: WorldExpansionInspector | null = null;
   private readonly weatherController = new WeatherController();
@@ -368,6 +372,11 @@ export class ShowcaseWorldSystem implements System {
     const isPhone = ctx.device.deviceClass === 'phone';
     this.worldRegions = new WorldRegions(isPhone);
     this.worldGroup.add(this.worldRegions);
+    this.regionAssetStreamer = new RegionAssetStreamer(this.worldRegions, {
+      supabaseUrl: SUPABASE_URL,
+      device: ctx.device,
+    });
+    this.lastActiveRegionId = null;
     for (const key of islandKeys) {
       const landform = new IslandLandformMesh(key, ctx.assets, {
         isPhone,
@@ -891,7 +900,12 @@ export class ShowcaseWorldSystem implements System {
     const weatherMinute = worldDay * 1440 + this.skyState.hour * 60;
     const debugPosition = this.playerController?.position ?? ctx.camera.position;
     const activeRegion = expandedRegionAt(debugPosition.x, debugPosition.z);
-    this.worldRegions?.setActiveRegion(activeRegion?.id ?? 'home-reach');
+    const activeRegionId = activeRegion?.id ?? 'home-reach';
+    if (this.lastActiveRegionId !== activeRegionId) {
+      this.lastActiveRegionId = activeRegionId;
+      this.worldRegions?.setActiveRegion(activeRegionId);
+      if (activeRegion) this.regionAssetStreamer?.activate(activeRegion.id);
+    }
     const climate = activeRegion?.id === 'veiled-peaks'
       ? { temperature: 0.12, moisture: 0.84, snowAllowed: true }
       : activeRegion?.id === 'capital-valley'
@@ -1328,6 +1342,11 @@ export class ShowcaseWorldSystem implements System {
       (this.awakenPulseMesh.material as THREE.Material).dispose();
       this.awakenPulseMesh = null;
     }
+    if (this.regionAssetStreamer) {
+      this.regionAssetStreamer.dispose();
+      this.regionAssetStreamer = null;
+    }
+    this.lastActiveRegionId = null;
     if (this.worldGroup) {
       disposeObject3D(this.worldGroup);
       this.worldGroup = null;

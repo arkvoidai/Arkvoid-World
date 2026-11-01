@@ -329,3 +329,26 @@
 - Atmosphere support currently includes a CPU reference model, not the GPU scattering LUT pipeline. Clouds remain the existing layered heightfield/puff renderer with weather-responsive coverage and density; volumetric raymarching, cloud shadows, rain/snow systems and cloud-coupled god rays remain future work.
 - River ribbons are deterministic geometry data and are not yet connected to streamed flow tiles or the live water renderer. Lakes, refraction, planar reflections, underwater collision and waterfall spray/mist LOD remain future work.
 - The merged expansion branch's GitHub Actions validation passed: TypeScript, 94 automated tests, and production build. The world JS chunk remained approximately 1.02 MB minified, so code-splitting is still an optimisation task. Android and desktop visual/performance captures were not produced.
+
+
+## Authored GLB region streaming (2026-11-01)
+
+- Connected all seven objects in the public Supabase arkvoid-assets bucket to a typed regional model manifest. The files are assigned to Veiled Peaks, Capital Valley and Primordial Forest; Cloud Reach and the base world remain procedural.
+- Added a lazy RegionAssetStreamer. The first frame does not import GLTFLoader or request model bytes. The loader is dynamically imported after a player enters a region, fetches the GLB with the public Storage URL, parses asynchronously and keeps the region's procedural scene as fallback.
+- Added model fitting from measured bounds: authored models are centered, grounded to the analytic region height and scaled to a target height. GLB meshes receive conservative shadow flags and frustum culling.
+- Added explicit byte budgets by device tier, a per-region triangle budget, sequential downloads, and an LRU residency cap (one region on phones, two on desktop). Oversized or malformed assets are discarded without blocking movement.
+- Added tests for all seven manifest entries, URL construction, tier selection, byte budgets and deterministic model grounding.
+- Updated the constitution and asset pipeline to permit optional authored hero models while keeping boot, locomotion, collision and fallback scenes procedural.
+
+## Decisions
+
+- Supabase Storage is the temporary public origin for the currently uploaded GLBs. The browser uses only the public object endpoint and the configured project URL; no secret key is embedded in client code. Public objects must not contain private content.
+- The shrine's 33.5 MB download is limited to Ultra-tier desktop. Mobile and software-rendered environments do not request it. Downloads start only after region entry and are sequential per active region.
+- The model streamer rejects assets that exceed the current region triangle budget and keeps procedural geometry visible. This favors stable frame time over forcing an unvalidated high-polygon model into a scene.
+- The assets' exact topology, origin, texture dependencies and licenses have not yet been verified with a local Blender/GLB inspection. Placement values are provisional and must be visually calibrated in the running world.
+
+## Known issues
+
+- The current integration is a regional hero-asset pass, not a full environment rebuild. The capital is not yet a dense walkable city; the snow system, volumetric clouds, terrain tiles, city districts, foliage LODs and water spray still require dedicated work.
+- The GLB source licenses must be recorded in docs/ASSET_LICENSES.md before commercial distribution. Public accessibility does not grant redistribution rights.
+- Android and desktop visual captures and real-device frame-time measurements are still required after the models render in the app.
