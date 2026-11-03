@@ -338,20 +338,8 @@ export class ShowcaseWorldSystem implements System {
     this.farMountains = new FarMountainRanges(ctx.device.deviceClass === 'phone');
     ctx.scene.add(this.farMountains);
 
-    // Load remote discoveries before dwell tracking so returning players are not rediscovered.
+    // Remote discovery hydration is started after the first rendered frame below.
     this.discoveryTracker = new DiscoveryTracker(3, [], false);
-    void getDiscoveredAreas().then((result) => {
-      if (result.ok) this.discoveryTracker?.seedDiscovered(result.data);
-      else this.discoveryTracker?.markReady();
-    }).catch(() => this.discoveryTracker?.markReady());
-
-    // Missing built Atlas rows are non-fatal and produce one diagnostic line.
-    void getAreas().then((result) => {
-      if (!result.ok) return;
-      const remoteIds = new Set(result.data.map((area) => area.id));
-      const missing = BUILT_AREAS.filter((area) => !remoteIds.has(area.id)).map((area) => area.id);
-      if (missing.length > 0) log.error('Built Atlas areas missing from Supabase:', missing.join(', '));
-    }).catch(() => log.error('Built Atlas area validation could not reach Supabase'));
 
     this.expansionInspector = WorldExpansionInspector.create();
 
@@ -386,7 +374,33 @@ export class ShowcaseWorldSystem implements System {
     this.unsubscribeFirstFrame = ctx.events.on('firstFrame', () => {
       this.unsubscribeFirstFrame?.();
       this.unsubscribeFirstFrame = null;
-      this.buildNextDeferredIsland(ctx, isPhone);
+
+      // These reads are useful after spawn, but never need to compete with the first frame.
+      void getDiscoveredAreas()
+        .then((result) => {
+          if (result.ok) this.discoveryTracker?.seedDiscovered(result.data);
+          else this.discoveryTracker?.markReady();
+        })
+        .catch(() => this.discoveryTracker?.markReady());
+
+      void getAreas()
+        .then((result) => {
+          if (!result.ok) return;
+          const remoteIds = new Set(result.data.map((area) => area.id));
+          const missing = BUILT_AREAS.filter((area) => !remoteIds.has(area.id)).map((area) => area.id);
+          if (missing.length > 0) log.error('Built Atlas areas missing from Supabase:', missing.join(', '));
+        })
+        .catch(() => log.error('Built Atlas area validation could not reach Supabase'));
+
+      // Avoid a large geometry-build task immediately after the first visible frame.
+      if (typeof window !== 'undefined') {
+        this.deferredIslandTimer = window.setTimeout(() => {
+          this.deferredIslandTimer = null;
+          this.buildNextDeferredIsland(ctx, isPhone);
+        }, 160);
+      } else {
+        this.buildNextDeferredIsland(ctx, isPhone);
+      }
     });
 
     // Plaza Inlay Rings on Island A (concentric rings + 12 radial rays)

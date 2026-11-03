@@ -386,6 +386,7 @@ export class Engine {
       this.bridge.mutable.loadProgress = 1;
       this.bridge.tickPublish(dt, true);
       this.events.emit('firstFrame', undefined);
+      this.assets.startBackgroundLoading();
     } else {
       this.bridge.tickPublish(dt, false);
     }

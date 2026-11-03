@@ -136,6 +136,9 @@ export default function WorldHost({
       return;
     }
 
+    // Restore accounts and fetch game data only after the first world frame is on screen.
+    if (!firstFrameReady) return;
+
     let cancelled = false;
 
     bootstrapSession()
@@ -176,7 +179,7 @@ export default function WorldHost({
     return () => {
       cancelled = true;
     };
-  }, [viewMode]);
+  }, [viewMode, firstFrameReady]);
 
   useEffect(() => {
     const handleNpcTalk = (event: Event) => {
@@ -311,12 +314,12 @@ export default function WorldHost({
   }, [syncVignetteOverlay]);
 
   useEffect(() => {
-    if (!worldReady) return;
+    if (!firstFrameReady) return;
     const timer = window.setTimeout(() => {
       setSplashMounted(false);
     }, 360);
     return () => window.clearTimeout(timer);
-  }, [worldReady]);
+  }, [firstFrameReady]);
 
   const handleCaptureFrame = useCallback((): string | null => {
     const eng = engineRef.current;
@@ -675,9 +678,9 @@ export default function WorldHost({
 
       {splashMounted ? (
         <div
-          aria-hidden={worldReady}
+          aria-hidden={firstFrameReady}
           className={`pointer-events-none fixed inset-0 z-system transition-opacity duration-500 ease-out ${
-            worldReady ? 'opacity-0' : 'opacity-100'
+            firstFrameReady ? 'opacity-0' : 'opacity-100'
           }`}
         >
           <WorldLoadingScreen />
