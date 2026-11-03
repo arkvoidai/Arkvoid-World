@@ -228,7 +228,10 @@ export class AssetStore {
     arm: THREE.CanvasTexture;
     bytes: number;
   } {
-    const size = 512;
+    // Fallbacks are intentionally lightweight: they render immediately while
+    // repository textures stream in. Generating every 512px map synchronously
+    // blocks the main thread during world boot, especially on phones.
+    const size = this.device.deviceClass === 'phone' ? 128 : 256;
     if (typeof document === 'undefined') {
       const dummyData = new Uint8Array(4 * 4 * 4).fill(128);
       const diff = new THREE.DataTexture(dummyData, 4, 4);
