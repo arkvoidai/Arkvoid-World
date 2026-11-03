@@ -486,8 +486,9 @@ export default function WorldHost({
         mountEngine(resolvedDevice);
       });
     } else {
+      // Keep the first world boot free of a second WebGL capability probe.
+      // The active engine already uses the immediate, conservative device profile.
       mountEngine(initialDevice);
-      void resolveDeviceProfile();
     }
 
     const cleanupEngine = () => {
