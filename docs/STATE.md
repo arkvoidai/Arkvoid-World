@@ -1,5 +1,11 @@
 # Arkvoid State
 
+## Performance pass — 2026-11-03
+- The loading overlay now transitions out after the first successful WebGL frame instead of waiting for Supabase session and initial game-data requests. Account restoration and gate-dependent actions remain guarded until bootstrap completes.
+- Supabase discovery/Atlas reads and the larger deferred-island build now start after the first frame, keeping non-critical work out of the initial render path.
+- Procedural fallback textures are capped at 256px (downloaded device-tier textures retain their configured resolution) to reduce synchronous canvas generation during engine construction.
+- Real texture downloads now begin after the first frame and use a small bounded worker pool; the procedural world remains available while optional textures load.
+
 ## Built
 - **Step 1 (Bootstrap)**:
   - Reshaped project directory structure into `src/app`, `src/ui`, `src/screens`, `src/hud`, `src/state`, `src/engine/core`, `src/engine/world`, `src/engine/fx`, `src/engine/actors`, `src/net`, `src/config`, `src/lib`, `docs`, and `supabase`.

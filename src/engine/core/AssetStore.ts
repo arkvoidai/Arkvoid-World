@@ -104,6 +104,7 @@ export class AssetStore {
   >();
   private disposed = false;
   private disableRealTextures = false;
+  private backgroundLoadingStarted = false;
 
   constructor(device: DeviceProfile) {
     this.device = device;
@@ -140,10 +141,6 @@ export class AssetStore {
     // Initialise procedural fallback textures first for instantaneous zero-wait startup
     this.initFallbackTextures();
 
-    // Begin background loading if real textures are not disabled
-    if (!this.disableRealTextures) {
-      this.startBackgroundLoading();
-    }
   }
 
   getSlot(id: TextureSlotId): TextureSlotMaps {
@@ -207,7 +204,7 @@ export class AssetStore {
         bytesEstimate: bytes,
         albedoGain: 1.0,
         flipGreen: false,
-        chosenRes: 512,
+        chosenRes: Math.min(256, this.targetRes),
         fileSizeBytes: 0,
         setKey: 'procedural_fallback',
         mapsFound: ['diff', 'nor', 'arm'],
@@ -228,7 +225,9 @@ export class AssetStore {
     arm: THREE.CanvasTexture;
     bytes: number;
   } {
-    const size = 512;
+    // Temporary fallbacks are replaced by device-tier source textures after first paint.
+    // 256px keeps procedural boot work responsive while retaining useful offline detail.
+    const size = Math.min(256, this.targetRes);
     if (typeof document === 'undefined') {
       const dummyData = new Uint8Array(4 * 4 * 4).fill(128);
       const diff = new THREE.DataTexture(dummyData, 4, 4);
@@ -468,13 +467,21 @@ export class AssetStore {
     return { diff: diffTex, nor: norTex, arm: armTex, bytes };
   }
 
-  private startBackgroundLoading(): void {
-    void (async () => {
-      for (const slotId of LOAD_PRIORITY) {
-        if (this.disposed) return;
-        await this.loadSlotFromRepo(slotId);
-      }
-    })();
+  startBackgroundLoading(): void {
+    if (this.disposed || this.disableRealTextures || this.backgroundLoadingStarted) return;
+    this.backgroundLoadingStarted = true;
+
+    const queue = [...LOAD_PRIORITY];
+    const workerCount = this.device.deviceClass === 'phone' ? 2 : 3;
+    void Promise.all(
+      Array.from({ length: Math.min(workerCount, queue.length) }, async () => {
+        while (!this.disposed) {
+          const slotId = queue.shift();
+          if (!slotId) return;
+          await this.loadSlotFromRepo(slotId);
+        }
+      }),
+    );
   }
 
   private async loadSlotFromRepo(slotId: TextureSlotId): Promise<void> {
